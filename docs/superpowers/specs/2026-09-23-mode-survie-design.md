@@ -115,7 +115,9 @@ script tourne toutes les 100 ms), densité de la circulation, barrages.
 **Journal** : joueur à 144-233 km/h (voiture add-on `cupra22f`). 63 recyclages
 en 1 min 45, jusqu'à 3 par seconde ; les flics posés derrière (50-120 m) ou sur
 les côtés (65-123 m) étaient « semés » 1 à 2 s plus tard ; 12 « retourné ou à
-l'eau » : le rattrapage invisible les poussait à 234 km/h. Aucun contact.
+l'eau » : le rattrapage invisible les poussait à 234 km/h. Au plus près dans les
+résumés : 16-18 m (les contacts n'étaient pas encore comptés) ; le streamer :
+« ils n'ont jamais le temps de m'attraper ».
 
 **Crash** : `GTA5.exe+0x10078DC`, lecture de `0xFFFFFFFFFFFFFFFF`, dans le code
 du jeu (aucune frame du plugin, « No Active scrThread »). Les 32 minidumps de

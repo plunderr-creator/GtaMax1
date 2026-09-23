@@ -1,7 +1,7 @@
 # GTA Max
 
 Overlay TikTok Live pour GTA V : la voix lit le chat, et chaque cadeau fait
-apparaître devant toi une voiture de police qui te prend en chasse, avec une
+apparaître derrière toi une voiture de police qui te fonce dessus, avec une
 alerte à l'écran.
 
 Plomberie reprise de Final Max v0.3.0 (connexion TikTok, voix Edge, overlay,
@@ -57,9 +57,9 @@ carte « État » dit combien il y en a.
 ## Réglages du plugin
 
 `<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation) :
-modèles tirés au sort (**`pranger`** = voiture Police Nationale, **`policet`** =
-fourgon CRS — ⚠️ il a déjà fait planter le jeu en poursuite : le retirer de la
-ligne en cas de plantage), distance (20 m), une voiture toutes les 3 s, 8 voitures
+modèles tirés au sort (**`pranger`** = voiture Police Nationale ; **`policet`**, le
+fourgon CRS, est retiré pour l'instant : il s'arrête juste après être apparu), distance
+derrière toi (20 m), moteur +40 %, 3 réapparitions derrière toi si tu la sèmes, une voiture toutes les 3 s, 8 voitures
 max, 20 demandes en attente max. Un policier par voiture, qui essaie de te
 percuter.
 **Recharger après une modif** (ini ou plugin) sans relancer le jeu : **F8**, taper

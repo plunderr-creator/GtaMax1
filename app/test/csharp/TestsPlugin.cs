@@ -188,11 +188,16 @@ static class TestsPlugin
         Verifier("plantée : au contact après une percussion, non", !Regles.EstPlantee(0f, 5f, 2f, 12f), "plantée");
         Verifier("plantée : elle roule, non", !Regles.EstPlantee(15f, 40f, 2f, 12f), "plantée");
 
-        // Façons de conduire : tour à tour, puis on recommence.
-        int s0 = 0, s1 = Regles.StrategieSuivante(s0), s2 = Regles.StrategieSuivante(s1), s3 = Regles.StrategieSuivante(s2);
-        Verifier("façons de conduire : percuter → poursuivre → foncer → percuter",
-            Regles.STRATEGIES[s0] == "percuter" && Regles.STRATEGIES[s1] == "poursuivre" && Regles.STRATEGIES[s2] == "foncer" && s3 == 0,
-            s0 + "," + s1 + "," + s2 + "," + s3);
+        // Façons de conduire : la poursuite d'abord (la mission RAM freinait les voitures au test en jeu).
+        int s0 = 0, s1 = Regles.StrategieSuivante(s0), s2 = Regles.StrategieSuivante(s1);
+        Verifier("façons de conduire : poursuivre → foncer → poursuivre",
+            Regles.STRATEGIES[s0] == "poursuivre" && Regles.STRATEGIES[s1] == "foncer" && s2 == 0,
+            s0 + "," + s1 + "," + s2);
+
+        // Semée : loin ET hors écran (sinon on la verrait disparaître).
+        Verifier("semée : à 150 m hors écran", Regles.EstSemee(150f, false, 120f), "non semée");
+        Verifier("semée : à 150 m mais visible, non", !Regles.EstSemee(150f, true, 120f), "semée");
+        Verifier("semée : à 60 m hors écran, non", !Regles.EstSemee(60f, false, 120f), "semée");
 
         return echecs == 0 ? 0 : 1;
     }

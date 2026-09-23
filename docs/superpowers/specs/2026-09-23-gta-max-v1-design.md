@@ -233,3 +233,16 @@ de conduire (percuter / poursuivre / foncer), essayées tour à tour quand une
 voiture reste 3 s à l'arrêt loin du joueur, et une ligne de diagnostic 5 s
 après chaque apparition (vitesse, distance, policier au volant, moteur,
 roues au sol, attente du sol). Apparition déplacée derrière le joueur.
+
+Troisième test (diagnostics dans `GTAMax.log`) : le joueur roule vite, il
+est à 90-180 m au bout de 5 s. Façon « percuter » (mission RAM) : 0 à
+27 km/h, elle freine les voitures. Façon « poursuivre » (`TASK_VEHICLE_CHASE`) :
+elles roulent, mais trop lentement. Les fourgons s'arrêtent juste après leur
+apparition. Retour : « trop lentes, pas agressives, trop faciles à esquiver ».
+→ `policet` retiré (`MODELES=pranger`) ; la mission RAM est abandonnée,
+« poursuivre » devient la façon principale, réglée pour coller et percuter
+(ni blocage, ni rangement à côté, percussion continue), « foncer » en secours ;
+moteur + vitesse de pointe +40 % (`MODIFY_VEHICLE_TOP_SPEED`, `BONUS_MOTEUR`),
+conduite « pilote » (`SET_DRIVER_RACING_MODIFIER`), carrosserie renforcée ;
+lancées à 115 % de la vitesse du joueur ; une voiture semée (plus de 120 m,
+hors écran, 2 s) réapparaît derrière le joueur, 3 fois au plus (`RATTRAPAGES`).

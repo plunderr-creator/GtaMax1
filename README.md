@@ -61,16 +61,21 @@ carte « État » dit combien il y en a.
 **`MODE=survie`** (défaut, inspiré du mode Survival de Driver 2) : chaque cadeau
 lâche un flic de plus à tes trousses (4 max ; au-delà, ils accélèrent). Voitures
 Police Nationale **indestructibles**. Quand tu roules vite, c'est **la course** :
-ils arrivent sur la voie d'à côté, dans ton sens, se calent à ta hauteur, te
-serrent et passent devant pour te barrer la route (leur vitesse de pointe
-s'adapte à ta voiture). Lent ou arrêté, ils arrivent autour de toi. Ils
+ils entrent tour à tour sur la voie d'à côté, derrière toi, ou par une rue de
+côté devant toi — toujours dans ton sens —, avec trois rôles qui tournent :
+coureur (se cale à ta hauteur et te serre), bloqueur (te double et te barre la
+route), collant (pare-choc contre pare-choc). Aucun coup de boost ; leur vitesse
+de pointe s'adapte à ta voiture. Lent ou arrêté, ils arrivent autour de toi. Ils
 apparaissent toujours sur une route **hors de ta vue**, et un flic semé ou planté
 réapparaît ailleurs, hors de vue. Aucune police du jeu pendant la poursuite (pas de tirs, d'hélicos ni de
 renforts). Elle s'arrête 60 s après le dernier cadeau : « Survécu ! » avec ton
 temps et ton record (`<GTA V>\scripts\GTAMax.record`). À pied, un flic arrêté
 près de toi 2 s : « Attrapé ! ». Réglages dans `[SURVIE]` : `MAX_FLICS`,
-`DUREE_S`, `DISTANCE_M`, `INDESTRUCTIBLES`. Design :
-`docs/superpowers/specs/2026-09-23-mode-survie-design.md`.
+`DUREE_S`, `DISTANCE_M`, `INDESTRUCTIBLES` ; voiture et policier : `MODELES` et
+`PED` de `[POLICE]`. Le jeu plante en poursuite ? Essaie `MODELES=police` et
+`PED=s_m_y_hwaycop_01` (modèles d'origine) : s'il ne plante plus, ce sont les mods
+de police. Rapports de crash du jeu : `%LOCALAPPDATA%\Rockstar Games\GTAV\CrashLogs`.
+Design : `docs/superpowers/specs/2026-09-23-mode-survie-design.md`.
 
 **`MODE=etoiles`** : chaque cadeau ajoute une étoile de recherche (3
 max) et c'est la vraie police du jeu qui te poursuit — tes voitures Police

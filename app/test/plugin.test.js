@@ -41,6 +41,18 @@ test('plugin C# : logique pure (parseur, registre, file de spawn, parc)', { skip
   }
 });
 
+test('empreinte du plugin : insensible aux fins de ligne (git autocrlf)', () => {
+  const { empreinte } = require('../outils/plugin.js');
+  const lf = tmp('lf') + '.cs', crlf = tmp('crlf') + '.cs';
+  try {
+    fs.writeFileSync(lf, 'class A {\n  int x;\n}\n');
+    fs.writeFileSync(crlf, '﻿class A {\r\n  int x;\r\n}\r\n');
+    assert.strictEqual(empreinte(lf), empreinte(crlf));
+  } finally {
+    for (const f of [lf, crlf]) { try { fs.unlinkSync(f); } catch {} }
+  }
+});
+
 const SHVDN3 = path.join(String(lireConfig().gta.dossier_jeu || ''), 'ScriptHookVDotNet3.dll');
 test('plugin C# : compile contre le vrai ScriptHookVDotNet3.dll', {
   skip: SANS_CSC || (!fs.existsSync(SHVDN3) && 'ScriptHookVDotNet3.dll introuvable dans le dossier du jeu'),

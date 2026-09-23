@@ -49,8 +49,11 @@ function compiler({ sources, sortie, references = [], defines = [], cible = 'lib
   return { ok: r.status === 0, sortie: texte };
 }
 
+// Fins de ligne normalisées : git (autocrlf) réécrit GTAMax.cs en CRLF au moindre
+// checkout, et le plugin passerait « périmé » sans qu'une ligne de code ait bougé.
 function empreinte(fichier) {
-  return crypto.createHash('sha1').update(fs.readFileSync(fichier)).digest('hex');
+  const texte = fs.readFileSync(fichier, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  return crypto.createHash('sha1').update(texte, 'utf8').digest('hex');
 }
 
 // 'absent' | 'a_jour' | 'perime' — lecture seule, appelé par /api/gta/status.

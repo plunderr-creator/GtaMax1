@@ -109,6 +109,15 @@ test('don : pont vers le jeu en panne → l\'alerte et le merci passent quand m�
   assert.match(erreurs[0], /pont cassé/);
 });
 
+test('don de test (setup) : alerte + voix + SPAWN_POLICE, roster intact', () => {
+  const b = banc();
+  b.ev.simulerDon();
+  assert.strictEqual(b.ecran[0].type, 'alerte_don');
+  assert.strictEqual(b.jeu[0][0], 'SPAWN_POLICE');
+  assert.strictEqual(b.dits.length, 1);
+  assert.deepStrictEqual(b.viewers, {});
+});
+
 test('like : agrégé par viewer, journalisé au vidage, roster à jour', () => {
   const b = banc();
   b.ev.onLike({ user: { displayId: 'Bob' }, count: 15 });

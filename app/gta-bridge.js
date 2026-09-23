@@ -28,7 +28,8 @@
  * lancement suivant. Le plugin applique la même péremption de son côté (fichier
  * resté d'une session précédente).
  */
-const fs = require('fs');
+const fs   = require('fs');
+const path = require('path');
 
 const NOM_FICHIER = 'gtamax_queue.txt';
 const VERBE_RE    = /^[A-Z][A-Z0-9_]*$/;
@@ -95,7 +96,9 @@ function creerPont({ fichier, ttlMs = 60000, retryMs = 150, alerteMs = 10000, ma
       try { fs.unlinkSync(tmp); } catch {}
       if (now - derniereErreur > 10000) {   // dossier absent, disque plein… : une ligne par 10 s, pas une par essai
         derniereErreur = now;
-        log.error(`❌ File du jeu impossible à écrire (${f}) : ${e.message} — dossier GTA V à vérifier dans le setup.`);
+        log.error(e.code === 'ENOENT'
+          ? `❌ File du jeu impossible à écrire : le dossier ${path.dirname(f)} n'existe pas (dossier GTA V faux dans le setup, ou ScriptHookVDotNet pas encore installé).`
+          : `❌ File du jeu impossible à écrire (${f}) : ${e.message}`);
       }
       planifier();
     }

@@ -1,0 +1,2 @@
+# Les .bat DOIVENT rester en CRLF : cmd.exe lit mal les fins de ligne LF (etiquettes, goto).
+*.bat text eol=crlf

@@ -108,6 +108,12 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     log.log(`🎁 DON    ${pseudo} → ${cadeau} ×${nombre} (${pieces} pièce${pieces > 1 ? 's' : ''})`);
     roster.ajouterDon(viewers(), pseudo, pieces, maintenant());
     sauver();
+    effetsDuDon(pseudo, nom, cadeau, nombre, pieces);
+  }
+
+  // Ce que VOIT et ENTEND le live pour un cadeau : alerte, merci, voiture.
+  // Partagé par le vrai cadeau et le bouton « Tester un don » du setup.
+  function effetsDuDon(pseudo, nom, cadeau, nombre, pieces) {
     broadcast({ type: 'alerte_don', pseudo: nom, cadeau, nombre, pieces });
     // Merci vocal nominatif (repris de Final Max : le donateur veut être entendu).
     tts.ajouter('', 'Merci ' + pseudo + ' pour ' + cadeau + (nombre > 1 ? ' fois ' + nombre : '') + ' !');
@@ -116,6 +122,14 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     } catch (e) {
       log.error(`❌ SPAWN_POLICE non envoyée (${pseudo}) : ${(e && e.message) || e}`);
     }
+  }
+
+  // Bouton « Tester un don » : toute la chaîne visible (alerte, voix, voiture en
+  // jeu) SANS toucher au roster — un faux donateur n'a rien à faire dans la
+  // table sur laquelle le gameplay futur se posera.
+  function simulerDon() {
+    log.log('🧪 DON DE TEST → alerte + voix + SPAWN_POLICE (roster non touché)');
+    effetsDuDon('testeur', 'Testeur', 'Rose', 1, 1);
   }
 
   // ─── LIKES ──────────────────────────────────────────────
@@ -158,7 +172,7 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     log.log(`📣 SHARE  ${pseudo}`);
   }
 
-  return { onChat, onGift, onLike, onFollow, onShare, viderLikes };
+  return { onChat, onGift, onLike, onFollow, onShare, viderLikes, simulerDon };
 }
 
 module.exports = { creerEvenements, extraireUtilisateur, nomAffichable };

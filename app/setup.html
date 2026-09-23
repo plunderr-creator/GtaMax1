@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Réglages — GTA Max</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:         #04060d;
+  --bg2:        rgba(10,14,26,0.94);
+  --bg3:        #111829;
+  --border:     rgba(255,255,255,0.08);
+  --border2:    rgba(255,255,255,0.16);
+  --text:       #e6edf3;
+  --text-muted: #8b949e;
+  --bleu:       #2f7bff;
+  --bleu-l:     #8ab8ff;
+  --rouge:      #ff3b3b;
+  --vert:       #3fb950;
+  --orange:     #f0a429;
+}
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+.header {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 32px; background: var(--bg2); border-bottom: 1px solid var(--border);
+}
+.header-logo { display: flex; align-items: center; gap: 12px; }
+.header-icon {
+  width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 19px;
+  background: linear-gradient(135deg, var(--bleu) 0 50%, var(--rouge) 50% 100%);
+}
+.header-title { font-size: 16px; font-weight: 700; }
+.header-sub { font-size: 12px; color: var(--text-muted); }
+.main { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 22px 24px; margin-bottom: 18px; }
+.card-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.card-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.6; }
+.badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: rgba(255,59,59,0.15); color: #ff8a8a; }
+
+.field { margin-bottom: 16px; }
+.field:last-child { margin-bottom: 0; }
+.label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.label-hint { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+input[type="text"], input[type="number"], input[type="password"], select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px;
+  padding: 9px 12px; font-size: 14px; color: var(--text); font-family: inherit; outline: none;
+}
+input:focus, select:focus { border-color: var(--bleu); }
+input[type="range"] { width: 100%; accent-color: var(--bleu); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.check-label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.check-label input { width: 16px; height: 16px; accent-color: var(--bleu); }
+.input-with-toggle { display: flex; gap: 8px; }
+.toggle-btn { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); padding: 0 12px; cursor: pointer; }
+
+.steps { display: grid; gap: 8px; margin-bottom: 18px; }
+.step { display: flex; gap: 12px; align-items: flex-start; font-size: 13px; line-height: 1.55; color: #c9d1d9; }
+.step-num {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; background: rgba(47,123,255,0.18); color: var(--bleu-l);
+}
+code { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+.btn {
+  border: none; border-radius: 7px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  background: var(--bleu); color: #fff; transition: filter .15s;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn.secondaire { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); }
+.btn.alerte { background: linear-gradient(90deg, var(--bleu), var(--rouge)); }
+
+.statut { display: grid; gap: 8px; font-size: 13px; }
+.statut-ligne { display: flex; gap: 10px; align-items: baseline; }
+.statut-ligne .k { width: 160px; flex: none; color: var(--text-muted); }
+.ok  { color: var(--vert); }
+.nok { color: #ff7b72; }
+.att { color: var(--orange); }
+.session-status { margin-top: 12px; font-size: 13px; padding: 10px 12px; border-radius: 6px; background: var(--bg3); border: 1px solid var(--border); }
+.session-status.ok  { border-color: rgba(63,185,80,0.4); }
+.session-status.nok { border-color: rgba(255,123,114,0.4); }
+.url-obs { display: flex; gap: 8px; }
+.url-obs input { font-family: ui-monospace, Consolas, monospace; }
+.note { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.6; }
+a { color: var(--bleu-l); }
+
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 8px;
+  padding: 12px 18px; border-radius: 8px; font-size: 14px; font-weight: 500; max-width: 90vw; z-index: 100;
+  background: var(--bg3); border: 1px solid var(--border2); box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+#toast.success { border-color: rgba(63,185,80,0.5); }
+#toast.error   { border-color: rgba(255,123,114,0.5); }
+
+@media (max-width: 640px) {
+  .grid2 { grid-template-columns: 1fr; }
+  .header { padding: 14px 16px; }
+  .main { padding: 20px 16px 48px; }
+  .statut-ligne .k { width: 120px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">
+    <div class="header-icon">🚨</div>
+    <div>
+      <div class="header-title">GTA Max — réglages</div>
+      <div class="header-sub">Voix du chat TikTok + police à chaque cadeau <span id="app-version"></span></div>
+    </div>
+  </div>
+  <a class="btn secondaire" href="/overlay" target="_blank" style="text-decoration:none">Voir l'overlay</a>
+</div>
+
+<div class="main">
+
+  <!-- ── ÉTAT ── -->
+  <div class="card">
+    <div class="card-title">📡 État</div>
+    <div class="card-desc">Mis à jour toutes les 3 secondes.</div>
+    <div class="statut">
+      <div class="statut-ligne"><span class="k">Live TikTok</span><span id="st-tiktok">…</span></div>
+      <div class="statut-ligne"><span class="k">Dossier GTA V</span><span id="st-dossier">…</span></div>
+      <div class="statut-ligne"><span class="k">ScriptHookVDotNet</span><span id="st-shvdn">…</span></div>
+      <div class="statut-ligne"><span class="k">Plugin GTAMax</span><span id="st-plugin">…</span></div>
+      <div class="statut-ligne"><span class="k">File vers le jeu</span><span id="st-file">…</span></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn alerte" onclick="testerDon()">🚨 Tester un don</button>
+      <span class="note" style="margin:0">Alerte sur l'overlay + merci vocal + une voiture de police en jeu. Le roster n'est pas touché.</span>
+    </div>
+  </div>
+
+  <!-- ── TIKTOK ── -->
+  <div class="card">
+    <div class="card-title">👤 Ton compte TikTok</div>
+    <div class="card-desc">Pseudo sans le @ et région du datacenter.</div>
+    <div class="grid2">
+      <div class="field">
+        <label class="label" for="tiktok-username">Pseudo TikTok <span class="label-hint">sans le @</span></label>
+        <input type="text" id="tiktok-username" placeholder="ton_pseudo" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="label" for="tiktok-region">Région <span class="label-hint">datacenter TikTok</span></label>
+        <select id="tiktok-region">
+          <option value="eu-ttp2">🇪🇺 Europe (eu-ttp2) — défaut</option>
+          <option value="useast1a">🇺🇸 USA Est (useast1a)</option>
+          <option value="useast2a">🇺🇸 USA (useast2a)</option>
+          <option value="alisg">🌏 Asie / Singapour (alisg)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔑 Code de connexion <span class="badge">Obligatoire</span></div>
+    <div class="card-desc">Un code secret qui autorise GTA Max à lire ton live. Il reste sur ton ordinateur (fichier <code>app\.env</code>), jamais renvoyé par cette page. À faire <strong>une seule fois</strong>.</div>
+    <div id="session-status-badge"></div>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div>Sur <strong>Google Chrome</strong> (ordinateur), va sur <strong>tiktok.com</strong> et connecte-toi.</div></div>
+      <div class="step"><div class="step-num">2</div><div>Appuie sur <strong>F12</strong> — un panneau s'ouvre sur le côté.</div></div>
+      <div class="step"><div class="step-num">3</div><div>En haut du panneau, clique <strong>Application</strong> (s'il est caché, clique la petite flèche <strong>»</strong>).</div></div>
+      <div class="step"><div class="step-num">4</div><div>À gauche, ouvre <strong>Cookies</strong> puis clique <code>https://www.tiktok.com</code>.</div></div>
+      <div class="step"><div class="step-num">5</div><div>Ligne <code>sessionid</code> : double-clique sa <strong>valeur</strong> et copie-la (<strong>Ctrl+C</strong>).</div></div>
+      <div class="step"><div class="step-num">6</div><div>Colle-la ci-dessous (<strong>Ctrl+V</strong>) et clique « Connecter mon live ».</div></div>
+    </div>
+    <div class="field">
+      <label class="label" for="session-id">Code sessionid</label>
+      <div class="input-with-toggle">
+        <input type="password" id="session-id" placeholder="longue suite de lettres et de chiffres" autocomplete="off">
+        <button class="toggle-btn" onclick="basculer('session-id')" title="Afficher/masquer">👁️</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label" for="sign-api-key">Clé API EulerStream <span class="label-hint">recommandé — évite la coupure « rate limit » (gratuit sur eulerstream.com)</span></label>
+      <div class="input-with-toggle">
+        <input type="password" id="sign-api-key" placeholder="euler_..." autocomplete="off">
+        <button class="toggle-btn" onclick="basculer('sign-api-key')" title="Afficher/masquer">👁️</button>
+      </div>
+      <div id="sign-key-status" class="note"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="saveTikTok()">🔌 Connecter mon live</button>
+      <button class="btn secondaire" onclick="reconnecter()">🔄 Reconnecter</button>
+    </div>
+    <div id="connect-result"></div>
+  </div>
+
+  <!-- ── VOIX ── -->
+  <div class="card">
+    <div class="card-title">🔊 Voix du chat</div>
+    <div class="card-desc">Les messages du chat sont lus par une voix neurale Edge, dans la source navigateur OBS. Les messages qui commencent par « ! » ne sont jamais lus. Au-delà de 4 messages en attente, ou 7 s de retard, on saute : jamais de rattrapage.</div>
+    <div class="field"><label class="check-label"><input type="checkbox" id="tts-enabled"> Lire le chat à voix haute</label></div>
+    <div class="field"><label class="check-label"><input type="checkbox" id="tts-read-username"> Dire le pseudo avant le message</label></div>
+    <div class="grid2">
+      <div class="field">
+        <label class="label" for="tts-voice">Voix <span class="label-hint">défaut : Rémy</span></label>
+        <select id="tts-voice">
+          <option value="fr-FR-RemyMultilingualNeural">Rémy (homme, FR) — défaut</option>
+          <option value="fr-FR-VivienneMultilingualNeural">Vivienne (femme, FR)</option>
+          <option value="fr-FR-HenriNeural">Henri (homme, FR)</option>
+          <option value="fr-FR-DeniseNeural">Denise (femme, FR)</option>
+          <option value="fr-FR-EloiseNeural">Éloïse (jeune, FR)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="tts-volume">Volume <span class="label-hint"><span id="tts-volume-label">80</span> %</span></label>
+        <input type="range" id="tts-volume" min="0" max="100" step="5" oninput="document.getElementById('tts-volume-label').textContent=this.value">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="saveTts()">💾 Sauvegarder la voix</button>
+      <button class="btn secondaire" onclick="testerVoix()">▶️ Tester la voix</button>
+    </div>
+  </div>
+
+  <!-- ── GTA V ── -->
+  <div class="card">
+    <div class="card-title">🎮 GTA V</div>
+    <div class="card-desc">Le dossier qui contient <code>GTA5.exe</code>. GTA Max y dépose ses commandes dans <code>scripts\gtamax_queue.txt</code> ; le plugin GTAMax les exécute en jeu. Rien n'est modifié dans les <code>.rpf</code> ni dans <code>mods\</code>.</div>
+    <div class="field">
+      <label class="label" for="gta-dossier">Dossier du jeu</label>
+      <input type="text" id="gta-dossier" placeholder="C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="saveGta()">💾 Enregistrer le dossier</button>
+    </div>
+    <div class="note">Plugin absent ou pas à jour : ferme GTA V et lance <strong>« Installer plugin GTA.bat »</strong> (à côté de « GTA Max.bat »). En jeu, la touche <strong>Inser</strong> recharge les scripts.</div>
+  </div>
+
+  <!-- ── OBS ── -->
+  <div class="card">
+    <div class="card-title">🎥 OBS</div>
+    <div class="card-desc">Ajoute une <strong>Source navigateur</strong> avec cette adresse, en <strong>1920 × 1080</strong>. Coche <strong>« Contrôler l'audio via OBS »</strong> : la voix du chat sort alors dans la source, pas sur tes haut-parleurs.</div>
+    <div class="url-obs">
+      <input type="text" id="url-overlay" readonly>
+      <button class="btn secondaire" onclick="copierUrl()">📋 Copier</button>
+    </div>
+  </div>
+
+  <!-- ── SERVEUR ── -->
+  <div class="card">
+    <div class="card-title">⚙️ Serveur</div>
+    <div class="card-desc">Change le port seulement s'il est déjà pris. Il faut redémarrer GTA Max ensuite, et mettre à jour l'adresse de la source OBS.</div>
+    <div class="grid2">
+      <div class="field">
+        <label class="label" for="server-port">Port <span class="label-hint">défaut : 3200</span></label>
+        <input type="number" id="server-port" min="1024" max="65535">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondaire" onclick="savePort()">💾 Enregistrer le port</button>
+      <a class="btn secondaire" href="/api/logs" download style="text-decoration:none">🛟 Télécharger les logs</a>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// GET /api/config : les secrets (session, clé EulerStream) sont strippés côté
+// serveur — seuls les booléens _hasSession/_hasSignKey arrivent ici.
+async function loadConfig() {
+  try {
+    const cfg = await (await fetch('/api/config')).json();
+    if (cfg._version) document.getElementById('app-version').textContent = '· v' + cfg._version;
+    document.getElementById('tiktok-username').value = (cfg.tiktok && cfg.tiktok.username) || '';
+    setOption('tiktok-region', (cfg.tiktok && cfg.tiktok.region) || 'eu-ttp2');
+    document.getElementById('session-status-badge').innerHTML = cfg._hasSession
+      ? '<div class="session-status ok">✅ Code de connexion enregistré (laisse vide pour le garder)</div>'
+      : '<div class="session-status nok">❌ Code de connexion manquant — GTA Max ne peut pas lire ton live</div>';
+    document.getElementById('sign-key-status').textContent = cfg._hasSignKey
+      ? '✅ Clé EulerStream enregistrée (laisse vide pour la garder)'
+      : '⚠️ Aucune clé — risque de coupure « rate limit ». Récupère-la (gratuit) sur eulerstream.com';
+
+    const tts = cfg.tts || {};
+    document.getElementById('tts-enabled').checked       = tts.enabled !== false;
+    document.getElementById('tts-read-username').checked = !!tts.read_username;
+    setOption('tts-voice', tts.voice || 'fr-FR-RemyMultilingualNeural');
+    const vol = Math.round(((typeof tts.volume === 'number') ? tts.volume : 0.8) * 100);
+    document.getElementById('tts-volume').value = vol;
+    document.getElementById('tts-volume-label').textContent = vol;
+
+    document.getElementById('gta-dossier').value = (cfg.gta && cfg.gta.dossier_jeu) || '';
+    document.getElementById('server-port').value = (cfg.server && cfg.server.port) || cfg._port || 3200;
+    document.getElementById('url-overlay').value = location.protocol + '//' + location.host + '/overlay';
+  } catch (e) {
+    showToast('Erreur de chargement : ' + e.message, 'error');
+  }
+}
+
+// Valeur inconnue (config éditée à la main) → ajoutée pour ne pas l'écraser.
+function setOption(id, val) {
+  const sel = document.getElementById(id);
+  if (![...sel.options].some(o => o.value === val)) {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = val + ' (personnalisé)';
+    sel.appendChild(o);
+  }
+  sel.value = val;
+}
+
+async function rafraichirEtat() {
+  try {
+    const [st, g] = await Promise.all([
+      fetch('/api/tiktok/status').then(r => r.json()),
+      fetch('/api/gta/status').then(r => r.json()),
+    ]);
+    poser('st-tiktok', st.connected ? ['ok', '✅ Connecté à @' + st.username]
+      : st.sessionExpired ? ['nok', '❌ Session expirée — recolle ton code sessionid']
+      : ['att', '⏳ Non connecté' + (st.reason ? ' — ' + st.reason : '')]);
+    poser('st-dossier', g.dossierOk ? ['ok', '✅ ' + g.dossier] : ['nok', '❌ GTA5.exe introuvable dans ' + g.dossier]);
+    poser('st-shvdn', g.shvdn ? ['ok', '✅ Installé'] : ['nok', '❌ Absent — voir README (ScriptHookVDotNet v3)']);
+    poser('st-plugin', g.plugin === 'a_jour' ? ['ok', '✅ Installé et à jour']
+      : g.plugin === 'perime' ? ['att', '⚠️ Pas à jour — relance « Installer plugin GTA.bat »']
+      : ['nok', '❌ Absent — lance « Installer plugin GTA.bat »']);
+    const f = g.file || {};
+    poser('st-file', f.fichierPresent ? ['att', '⏳ Un fichier attend le jeu' + (f.enAttente ? ' (+' + f.enAttente + ' en mémoire)' : '') + ' — GTA V lancé ?']
+      : f.enAttente ? ['att', '⏳ ' + f.enAttente + ' commande(s) en attente']
+      : ['ok', '✅ Vide']);
+  } catch (e) {}
+}
+function poser(id, [classe, texte]) {
+  const el = document.getElementById(id);
+  el.className = classe; el.textContent = texte;
+}
+
+function basculer(id) { const i = document.getElementById(id); i.type = i.type === 'password' ? 'text' : 'password'; }
+
+// Nettoie un Session ID collé (enlève "sessionid=", guillemets, espaces, etc.)
+function cleanSessionId(raw) {
+  const s = String(raw || '').trim();
+  const m = s.match(/sessionid["'\s:=]+([a-z0-9]+)/i);
+  if (m) return m[1];
+  const m2 = s.match(/[a-z0-9]{16,}/i);
+  return m2 ? m2[0] : s.replace(/[^a-z0-9]/gi, '');
+}
+
+async function saveTikTok() {
+  const username  = document.getElementById('tiktok-username').value.trim().replace(/^@/, '');
+  const region    = document.getElementById('tiktok-region').value;
+  const sessionId = cleanSessionId(document.getElementById('session-id').value);
+  const signApiKey = document.getElementById('sign-api-key').value.trim();
+  const result    = document.getElementById('connect-result');
+  if (!username) { showToast('Entre ton pseudo TikTok', 'error'); return; }
+  if (sessionId && sessionId.length < 16) { showToast('Ce code semble trop court — recopie bien toute la valeur de sessionid', 'error'); return; }
+  const body = { tiktok: { username, region } };
+  if (sessionId) body.session_id = sessionId;          // vide = code déjà enregistré gardé
+  if (signApiKey) body.sign_api_key = signApiKey;      // vide = clé inchangée côté serveur
+  result.innerHTML = '<div class="session-status">⏳ Connexion à @' + esc(username) + '…</div>';
+  const saved = await saveToApi(body);
+  // Ne PAS prétendre le succès si l'enregistrement a échoué : on garde ce qui a été collé.
+  if (!saved || !saved.ok) {
+    result.innerHTML = '<div class="session-status nok">❌ Enregistrement échoué : ' + esc((saved && saved.message) || 'erreur inconnue') + '</div>';
+    return;
+  }
+  document.getElementById('session-id').value = '';
+  document.getElementById('sign-api-key').value = '';
+  loadConfig();
+  // Le serveur reconnecte tout seul → on vérifie le résultat en direct
+  let tries = 0;
+  const check = async () => {
+    tries++;
+    try {
+      const st = await (await fetch('/api/tiktok/status')).json();
+      if (st.connected) { result.innerHTML = '<div class="session-status ok">🎉 Connecté à @' + esc(st.username || username) + ' !</div>'; return; }
+      if (st.sessionExpired || /expir|invalid|login|unauthor|session/i.test(st.reason || '')) {
+        result.innerHTML = '<div class="session-status nok">❌ Code refusé. Recopie bien la valeur de <code>sessionid</code> (sans espaces ni guillemets).</div>';
+        return;
+      }
+    } catch (e) {}
+    if (tries < 6) { result.innerHTML = '<div class="session-status">⏳ Connexion en cours… (' + tries + '/6)</div>'; setTimeout(check, 2000); }
+    else result.innerHTML = '<div class="session-status nok">⚠️ Pas encore connecté. Vérifie que ton live TikTok est bien <strong>EN DIRECT</strong> (la connexion ne marche que pendant un live), puis « Reconnecter ».</div>';
+  };
+  setTimeout(check, 1500);
+}
+
+async function reconnecter() {
+  try {
+    const r = await (await fetch('/api/tiktok/reconnect', { method: 'POST' })).json();
+    showToast(r.message, r.ok ? 'success' : 'error');
+  } catch (e) { showToast('Erreur réseau : ' + e.message, 'error'); }
+}
+
+async function saveTts() {
+  await saveToApi({ tts: {
+    enabled:       document.getElementById('tts-enabled').checked,
+    read_username: document.getElementById('tts-read-username').checked,
+    voice:         document.getElementById('tts-voice').value,
+    volume:        Math.min(1, Math.max(0, (parseInt(document.getElementById('tts-volume').value, 10) || 0) / 100)),
+  } });
+}
+
+async function testerVoix() {
+  try {
+    const r = await (await fetch('/api/tts/test', { method: 'POST' })).json();
+    showToast(r.message, r.ok ? 'success' : 'error');
+  } catch (e) { showToast('Erreur réseau : ' + e.message, 'error'); }
+}
+
+async function saveGta() {
+  const d = document.getElementById('gta-dossier').value.trim();
+  if (!d) { showToast('Colle le dossier qui contient GTA5.exe', 'error'); return; }
+  await saveToApi({ gta: { dossier_jeu: d } });
+  loadConfig(); rafraichirEtat();
+}
+
+async function savePort() {
+  await saveToApi({ server: { port: parseInt(document.getElementById('server-port').value, 10) } });
+}
+
+async function testerDon() {
+  try {
+    const r = await (await fetch('/api/test/don', { method: 'POST' })).json();
+    showToast(r.message, r.ok ? 'success' : 'error');
+    setTimeout(rafraichirEtat, 300);
+  } catch (e) { showToast('Erreur réseau : ' + e.message, 'error'); }
+}
+
+function copierUrl() {
+  const i = document.getElementById('url-overlay');
+  i.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject())
+    .then(() => showToast('Adresse copiée', 'success'))
+    .catch(() => { try { document.execCommand('copy'); showToast('Adresse copiée', 'success'); } catch (e) {} });
+}
+
+async function saveToApi(body) {
+  try {
+    const res = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    showToast(data.message, data.ok ? 'success' : 'error');
+    return data;   // ← l'appelant (saveTikTok) doit pouvoir distinguer succès/échec
+  } catch (e) {
+    showToast('Erreur réseau : ' + e.message, 'error');
+    return { ok: false, message: 'Erreur réseau : ' + e.message };
+  }
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
+  t.className = type;
+  t.style.display = 'flex';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+loadConfig();
+rafraichirEtat();
+setInterval(rafraichirEtat, 3000);
+</script>
+</body>
+</html>

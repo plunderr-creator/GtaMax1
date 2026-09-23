@@ -7,6 +7,7 @@
  */
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using GTAMax;
 
@@ -20,9 +21,27 @@ static class TestsPlugin
         if (!ok) echecs++;
     }
 
-    static int Main()
+    static int Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
+
+        // Mode « consommer <dossier> » : joue le plugin une fois sur une vraie file
+        // écrite par le serveur Node (test de protocole de bout en bout, voir
+        // plugin.test.js). Une ligne « CMD\tVERBE\tclé=valeur… » par commande.
+        if (args.Length == 2 && args[0] == "consommer")
+        {
+            List<Commande> lotConso = ConsommateurFile.Prendre(args[1], DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 60000,
+                delegate (string m) { Console.Error.WriteLine(m); });
+            if (lotConso != null)
+                foreach (Commande cmd in lotConso)
+                {
+                    var champs = new List<string> { "CMD", cmd.Verbe };
+                    foreach (var kv in cmd.Args) champs.Add(kv.Key + "=" + kv.Value);
+                    Console.WriteLine(string.Join("\t", champs.ToArray()));
+                }
+            return 0;
+        }
+
         string err;
 
         // ── Parseur de ligne ──────────────────────────────────────────────
@@ -68,6 +87,38 @@ static class TestsPlugin
             lot.Count + " commande(s)");
         Verifier("fichier : périmée et invalide journalisées", journal.Count == 2, string.Join(" | ", journal.ToArray()));
         Verifier("fichier vide ou null", LecteurFile.ParserContenu(null, 0, 1, null).Count == 0, "non vide");
+
+        // ── Consommation de la file (vrais fichiers, dossier temporaire) ──
+        string dossier = Path.Combine(Path.GetTempPath(), "gtamax-conso-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dossier);
+        try
+        {
+            string cheminFile = Path.Combine(dossier, ConsommateurFile.FICHIER);
+            string cheminEnCours = Path.Combine(dossier, ConsommateurFile.FICHIER_EN_COURS);
+            Verifier("file absente → rien (serveur éteint)", ConsommateurFile.Prendre(dossier, maintenant, 60000, null) == null, "non null");
+
+            File.WriteAllText(cheminFile, "SPAWN_POLICE t=" + maintenant + " donateur=a\nSPAWN_POLICE t=" + maintenant + " donateur=b\n");
+            List<Commande> pris = ConsommateurFile.Prendre(dossier, maintenant, 60000, null);
+            Verifier("file prise : commandes dans l'ordre, fichier supprimé",
+                pris != null && pris.Count == 2 && pris[0].Arg("donateur") == "a" && !File.Exists(cheminFile) && !File.Exists(cheminEnCours),
+                pris == null ? "null" : pris.Count + " commande(s)");
+            Verifier("file déjà prise → rien au tick suivant (jamais deux fois)", ConsommateurFile.Prendre(dossier, maintenant, 60000, null) == null, "rejouée");
+
+            File.WriteAllText(cheminEnCours, "SPAWN_POLICE t=" + maintenant + " donateur=reste\n");
+            File.WriteAllText(cheminFile, "SPAWN_POLICE t=" + maintenant + " donateur=nouveau\n");
+            pris = ConsommateurFile.Prendre(dossier, maintenant, 60000, null);
+            Verifier("un .en-cours resté d'un essai interrompu passe en premier",
+                pris != null && pris.Count == 1 && pris[0].Arg("donateur") == "reste" && File.Exists(cheminFile), "ordre faux");
+            pris = ConsommateurFile.Prendre(dossier, maintenant, 60000, null);
+            Verifier("puis le fichier suivant", pris != null && pris.Count == 1 && pris[0].Arg("donateur") == "nouveau", "absent");
+
+            File.WriteAllText(cheminFile, "SPAWN_POLICE t=" + maintenant + " donateur=verrou\n");
+            using (new FileStream(cheminFile, FileMode.Open, FileAccess.Read, FileShare.None))
+                Verifier("fichier verrouillé → on réessaiera (null, rien perdu)", ConsommateurFile.Prendre(dossier, maintenant, 60000, null) == null && File.Exists(cheminFile), "pris quand même");
+            pris = ConsommateurFile.Prendre(dossier, maintenant, 60000, null);
+            Verifier("verrou levé → commande reçue au tick suivant", pris != null && pris.Count == 1 && pris[0].Arg("donateur") == "verrou", "perdue");
+        }
+        finally { try { Directory.Delete(dossier, true); } catch (Exception) { } }
 
         // ── Registre d'actions ────────────────────────────────────────────
         var registre = new RegistreActions();

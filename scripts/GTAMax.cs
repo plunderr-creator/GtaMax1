@@ -134,6 +134,42 @@ namespace GTAMax
         }
     }
 
+    /// <summary>
+    /// Côté plugin du protocole de la file : PREND le fichier du serveur par un
+    /// rename (atomique), le lit, le supprime, puis rend les commandes fraîches.
+    /// Le fichier est supprimé AVANT que les commandes soient jouées : jamais deux fois.
+    /// </summary>
+    public static class ConsommateurFile
+    {
+        public const string FICHIER = "gtamax_queue.txt";
+        public const string FICHIER_EN_COURS = "gtamax_queue.en-cours";
+
+        // null = rien à lire, ou fichier verrouillé (antivirus, rename du serveur en
+        // cours) : on réessaiera au tick suivant. Un .en-cours resté d'un essai
+        // interrompu passe en premier.
+        public static List<Commande> Prendre(string dossier, long maintenantMs, long ttlMs, Action<string> log)
+        {
+            string enCours = Path.Combine(dossier, FICHIER_EN_COURS);
+            string file = Path.Combine(dossier, FICHIER);
+            if (!File.Exists(enCours))
+            {
+                if (!File.Exists(file)) return null;      // cas normal : serveur éteint ou aucun don
+                try { File.Move(file, enCours); }         // on PREND le fichier : le serveur peut en écrire un nouveau
+                catch (IOException) { return null; }
+                catch (UnauthorizedAccessException) { return null; }
+            }
+            string contenu;
+            try
+            {
+                contenu = File.ReadAllText(enCours, Encoding.UTF8);
+                File.Delete(enCours);
+            }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+            return LecteurFile.ParserContenu(contenu, maintenantMs, ttlMs, log);
+        }
+    }
+
     /// <summary>Registre verbe → action. Ajouter une action = une entrée, pas un switch.</summary>
     public sealed class RegistreActions
     {
@@ -360,8 +396,6 @@ namespace GTAMax
 
     public class GTAMax : Script
     {
-        const string FICHIER = "gtamax_queue.txt";
-        const string FICHIER_EN_COURS = "gtamax_queue.en-cours";
         const long TTL_MS = 60000;                 // même péremption que le serveur
         const long AGE_MAX_DEMANDE_MS = 60000;     // une demande qui attend (joueur mort, cinématique) n'est pas rattrapée après
         const int CHARGEMENT_MAX_MS = 5000;        // modèle qui ne se charge pas : on abandonne cette apparition
@@ -402,7 +436,7 @@ namespace GTAMax
             Tick += SurTick;
             Aborted += SurArret;
             journal.Info("Plugin GTA Max chargé — actions : " + string.Join(", ", registre.Verbes)
-                + " — file : " + Path.Combine(dossierScripts, FICHIER));
+                + " — file : " + Path.Combine(dossierScripts, ConsommateurFile.FICHIER));
         }
 
         void ChargerReglages()
@@ -467,25 +501,9 @@ namespace GTAMax
         // ─── FILE ─────────────────────────────────────────────────────────
         void LireFile()
         {
-            string enCours = Path.Combine(dossierScripts, FICHIER_EN_COURS);
-            string file = Path.Combine(dossierScripts, FICHIER);
-            if (!File.Exists(enCours))
-            {
-                if (!File.Exists(file)) return;          // cas normal : rien à faire (serveur éteint ou aucun don)
-                try { File.Move(file, enCours); }         // on PREND le fichier : le serveur peut en écrire un nouveau
-                catch (IOException) { return; }           // verrouillé (antivirus, rename en cours) : tick suivant
-                catch (UnauthorizedAccessException) { return; }
-            }
-            string contenu;
-            try
-            {
-                contenu = File.ReadAllText(enCours, Encoding.UTF8);
-                File.Delete(enCours);                     // supprimé AVANT d'exécuter : jamais joué deux fois
-            }
-            catch (IOException) { return; }
-            catch (UnauthorizedAccessException) { return; }
-
-            foreach (Commande c in LecteurFile.ParserContenu(contenu, MaintenantEpochMs(), TTL_MS, journal.Info))
+            List<Commande> lot = ConsommateurFile.Prendre(dossierScripts, MaintenantEpochMs(), TTL_MS, journal.Info);
+            if (lot == null) return;
+            foreach (Commande c in lot)
             {
                 journal.Info("Commande : " + c);
                 registre.Executer(c, journal.Erreur);

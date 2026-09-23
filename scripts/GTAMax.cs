@@ -436,6 +436,7 @@ namespace GTAMax
     {
         public string Donateur;
         public string Cadeau;
+        public bool Renfort;         // mode étoiles : la voiture est confiée à l'IA de poursuite du jeu
     }
 
     sealed class ChargementEnCours
@@ -461,6 +462,7 @@ namespace GTAMax
         public int Rattrapages;      // réapparitions derrière le joueur déjà faites
         public int ImmobileDepuis;   // Game.GameTime depuis lequel elle ne roule plus loin du joueur (0 = elle roule)
         public bool DiagnostiqueFait;
+        public bool Renfort;         // policier du jeu (TASK_COMBAT_PED), pas notre traque
     }
 
     public class GTAMax : Script
@@ -510,7 +512,10 @@ namespace GTAMax
         bool tirsAutorises, helicosAutorises;
         int etoilesVisees;       // niveau que les cadeaux imposent (0 = aucun)
         int tenueJusquA;         // Game.GameTime : jusque-là, la police sait toujours où est le joueur
-        int prochainDesarmement, prochaineTenue, prochainDispatch;
+        bool renfortParCadeau;   // mode étoiles : une voiture apparaît aussi derrière le joueur
+        float distanceRenfortsM; // distance idéale des renforts du jeu (SET_DISPATCH_IDEAL_SPAWN_DISTANCE)
+        readonly HashSet<int> voituresBoostees = new HashSet<int>();
+        int prochainDesarmement, prochaineTenue, prochainDispatch, prochainBoost;
         bool dispatchModifie;
         ChargementEnCours chargement;
         int prochainEntretien;
@@ -536,7 +541,8 @@ namespace GTAMax
         {
             string liste = MODELES_DEFAUT, mode = "etoiles";
             int intervalle = 3000, maxVoitures = 8, maxAttente = 20, rattrapages = 3;
-            int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0;
+            int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0, renfort = 1;
+            float distanceRenforts = 60f;
             float distance = 20f, bonus = 40f;
             try
             {
@@ -546,6 +552,8 @@ namespace GTAMax
                 tenueS      = Settings.GetValue<int>("ETOILES", "TENUE_S", tenueS);
                 tirs        = Settings.GetValue<int>("ETOILES", "TIRS", tirs);
                 helicos     = Settings.GetValue<int>("ETOILES", "HELICOS", helicos);
+                renfort     = Settings.GetValue<int>("ETOILES", "RENFORT", renfort);
+                distanceRenforts = Settings.GetValue<float>("ETOILES", "DISTANCE_RENFORTS_M", distanceRenforts);
                 liste       = Settings.GetValue<string>("POLICE", "MODELES", liste);
                 distance    = Settings.GetValue<float>("POLICE", "DISTANCE_M", distance);
                 intervalle  = Settings.GetValue<int>("POLICE", "INTERVALLE_MS", intervalle);
@@ -567,9 +575,12 @@ namespace GTAMax
             tenueMs = Regles.Borne(tenueS, 0, 600) * 1000;
             tirsAutorises = tirs != 0;
             helicosAutorises = helicos != 0;
+            renfortParCadeau = renfort != 0;
+            distanceRenfortsM = Regles.Borne(distanceRenforts, 30f, 300f);
             journal.Info("Mode : " + (modeEtoiles && modeVoitures ? "les deux" : modeEtoiles ? "étoiles" : "voitures")
                 + (modeEtoiles ? " — +" + etoilesParCadeau + " étoile(s) par cadeau, " + etoilesMax + " max, tenue " + (tenueMs / 1000)
-                    + " s, police " + (tirsAutorises ? "armée" : "SANS armes") + ", hélicos " + (helicosAutorises ? "oui" : "NON") : ""));
+                    + " s, police " + (tirsAutorises ? "armée" : "SANS armes") + ", hélicos " + (helicosAutorises ? "oui" : "NON")
+                    + ", renforts du jeu à " + distanceRenfortsM + " m" + (renfortParCadeau ? ", + 1 renfort derrière par cadeau" : "") : ""));
             fileSpawn = new FileSpawn<DemandeSpawn>(Regles.Borne(intervalle, 500, 60000), Regles.Borne(maxAttente, 1, 200), AGE_MAX_DEMANDE_MS);
             parc = new Parc<UnitePolice>(Regles.Borne(maxVoitures, 1, 30));
             journal.Info("Réglages : modèles " + string.Join(", ", modeles) + " ; " + distanceM + " m derrière ; 1 voiture / "
@@ -618,6 +629,8 @@ namespace GTAMax
                 {
                     Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, true);
                     Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_SWAT, true);
+                    Function.Call(Hash.RESET_DISPATCH_IDEAL_SPAWN_DISTANCE);
+                    Function.Call(Hash.SET_DISPATCH_TIME_BETWEEN_SPAWN_ATTEMPTS_MULTIPLIER, 1f);
                 }
                 journal.Info("Plugin GTA Max arrêté.");
             }
@@ -642,8 +655,11 @@ namespace GTAMax
         void SpawnPolice(Commande c)
         {
             if (modeEtoiles) AjouterEtoiles(c.Arg("donateur"));
-            if (!modeVoitures) return;
-            var d = new DemandeSpawn { Donateur = c.Arg("donateur"), Cadeau = c.Arg("cadeau") };
+            // Mode étoiles seul : la police du jeu arrivait de très loin (test du
+            // 2026-09-23). Un renfort apparaît donc derrière le joueur, confié à l'IA du jeu.
+            bool renfort = !modeVoitures;
+            if (renfort && (!renfortParCadeau || etoilesVisees == 0)) return;
+            var d = new DemandeSpawn { Donateur = c.Arg("donateur"), Cadeau = c.Arg("cadeau"), Renfort = renfort };
             if (fileSpawn.Ajouter(d, Game.GameTime))
                 journal.Info("Voiture de police en file (" + fileSpawn.Count + " en attente) — " + d.Donateur + " / " + d.Cadeau);
             else
@@ -658,6 +674,8 @@ namespace GTAMax
         // pas, elle percute et arrête), pas d'hélicoptères, et une TENUE — tant
         // qu'elle dure, la police sait toujours où est le joueur.
         const int DISPATCH_HELICO_POLICE = 2, DISPATCH_HELICO_SWAT = 12;   // ENABLE_DISPATCH_SERVICE
+        const float DISPATCH_CADENCE = 0.25f;      // renforts du jeu 4× plus fréquents
+        const int CA_UTILISE_VEHICULE = 1, CA_POURSUIT_A_PIED = 21, CA_ATTAQUE_EN_VEHICULE = 52;   // SET_PED_COMBAT_ATTRIBUTES
         const int DESARMEMENT_MS = 500, TENUE_VERIF_MS = 1000, DISPATCH_VERIF_MS = 5000;
         const float RAYON_DESARMEMENT_M = 300f;
         const int ARME_A_FEU_OU_EXPLOSIF = 6;      // IS_PED_ARMED : 2 explosifs + 4 armes à feu (la matraque reste)
@@ -687,11 +705,18 @@ namespace GTAMax
 
             // Hélicoptères : coupés dans le dispatch, revérifié toutes les 5 s (une
             // mission ou un autre script peut les rallumer), rendus à l'arrêt du script.
-            if (!helicosAutorises && maintenant >= prochainDispatch)
+            // Renforts du jeu : plus près et plus souvent (au test, la police
+            // arrivait de très loin et la poursuite était trop facile).
+            if (maintenant >= prochainDispatch)
             {
                 prochainDispatch = maintenant + DISPATCH_VERIF_MS;
-                Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, false);
-                Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_SWAT, false);
+                if (!helicosAutorises)
+                {
+                    Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, false);
+                    Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_SWAT, false);
+                }
+                Function.Call(Hash.SET_DISPATCH_IDEAL_SPAWN_DISTANCE, distanceRenfortsM);
+                Function.Call(Hash.SET_DISPATCH_TIME_BETWEEN_SPAWN_ATTEMPTS_MULTIPLIER, DISPATCH_CADENCE);
                 dispatchModifie = true;
             }
 
@@ -711,6 +736,11 @@ namespace GTAMax
                     if (Function.Call<bool>(Hash.IS_PED_ARMED, p, ARME_A_FEU_OU_EXPLOSIF))
                         Function.Call(Hash.REMOVE_ALL_PED_WEAPONS, p, true);
                 }
+            }
+            if (maintenant >= prochainBoost)
+            {
+                prochainBoost = maintenant + DESARMEMENT_MS;
+                BoosterPoliceDuJeu(joueur);
             }
 
             // Tenue : tant qu'elle dure, les étoiles ne descendent pas sous la cible
@@ -735,6 +765,26 @@ namespace GTAMax
                     if (Function.Call<bool>(Hash.ARE_PLAYER_STARS_GREYED_OUT, Game.Player.Handle))
                         Function.Call(Hash.REPORT_POLICE_SPOTTED_PLAYER, Game.Player.Handle);
                 }
+            }
+        }
+
+        // Voitures de police du jeu autour du joueur : pilotes au maximum, moteur
+        // relevé comme nos voitures, carrosserie renforcée. Une fois par voiture.
+        void BoosterPoliceDuJeu(Ped joueur)
+        {
+            if (voituresBoostees.Count > 500) voituresBoostees.Clear();
+            foreach (Vehicle v in World.GetNearbyVehicles(joueur, RAYON_DESARMEMENT_M))
+            {
+                if (v == null || !v.Exists() || v.IsDead || voituresBoostees.Contains(v.Handle)) continue;
+                Ped c = v.Driver;
+                if (c == null || !c.Exists() || c.IsDead || c == joueur) continue;
+                if (!Regles.EstPolice(Function.Call<int>(Hash.GET_PED_TYPE, c))) continue;
+                voituresBoostees.Add(v.Handle);
+                if (bonusMoteur > 0f) Function.Call(Hash.MODIFY_VEHICLE_TOP_SPEED, v, bonusMoteur);
+                Function.Call(Hash.SET_VEHICLE_STRONG, v, true);
+                Function.Call(Hash.SET_DRIVER_ABILITY, c, 1f);
+                Function.Call(Hash.SET_DRIVER_AGGRESSIVENESS, c, 1f);
+                Function.Call(Hash.SET_DRIVER_RACING_MODIFIER, c, 1f);
             }
         }
 
@@ -836,7 +886,7 @@ namespace GTAMax
 
             // Un seul policier par voiture, au volant.
             Ped conducteur = v.CreatePedOnSeat(VehicleSeat.Driver, c.Agent);
-            PreparerAgent(conducteur);
+            if (c.Demande.Renfort) PreparerRenfort(conducteur); else PreparerAgent(conducteur);
             bool auVolant = conducteur != null && conducteur.Exists() && conducteur.IsInVehicle(v);
             if (!auVolant) journal.Erreur("« " + c.Nom + " » : le policier n'a pas pu prendre le volant (siège conducteur du modèle ?)");
 
@@ -855,7 +905,7 @@ namespace GTAMax
             {
                 Voiture = v, Conducteur = conducteur,
                 ModeleHash = v.Model.Hash, Nom = c.Nom, Donateur = c.Demande.Donateur,
-                NeeA = Game.GameTime,
+                NeeA = Game.GameTime, Renfort = c.Demande.Renfort,
             };
             DonnerOrdre(u, joueur);
 
@@ -874,7 +924,7 @@ namespace GTAMax
                 Supprimer(vieille);
             }
             parc.Ajouter(u);
-            journal.Info("Voiture « " + c.Nom + " » apparue derrière le joueur pour " + (c.Demande.Donateur.Length > 0 ? c.Demande.Donateur : "?")
+            journal.Info((u.Renfort ? "Renfort « " : "Voiture « ") + c.Nom + " » apparue derrière le joueur pour " + (c.Demande.Donateur.Length > 0 ? c.Demande.Donateur : "?")
                 + " (" + parc.Count + "/" + parc.Max + ", " + Math.Round(position.DistanceTo(joueur.Position)) + " m, au volant : "
                 + (auVolant ? "oui" : "NON") + ", gyrophares " + (els ? "ELS" : "vanilla") + ")");
         }
@@ -928,6 +978,23 @@ namespace GTAMax
             Function.Call(Hash.SET_PED_CONFIG_FLAG, p, FLAG_PEUT_TRAVERSER_PARE_BRISE, false);   // il percute : qu'il ne passe pas par le pare-brise
         }
 
+        // Renfort (mode étoiles) : un vrai policier du jeu, qui poursuit le joueur
+        // recherché avec l'IA de poursuite de la police (percussions, PIT) ;
+        // sans arme, le combat en voiture = foncer dedans.
+        void PreparerRenfort(Ped p)
+        {
+            if (p == null || !p.Exists()) return;
+            Function.Call(Hash.SET_PED_AS_COP, p, true);
+            Function.Call(Hash.SET_DRIVER_ABILITY, p, 1f);
+            Function.Call(Hash.SET_DRIVER_AGGRESSIVENESS, p, 1f);
+            Function.Call(Hash.SET_DRIVER_RACING_MODIFIER, p, 1f);
+            Function.Call(Hash.SET_PED_CONFIG_FLAG, p, FLAG_PEUT_TRAVERSER_PARE_BRISE, false);
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES, p, CA_UTILISE_VEHICULE, true);
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES, p, CA_ATTAQUE_EN_VEHICULE, true);
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES, p, CA_POURSUIT_A_PIED, true);
+            if (!tirsAutorises) Function.Call(Hash.REMOVE_ALL_PED_WEAPONS, p, true);
+        }
+
         // TRAQUE, redonnée à chaque entretien (1 s) : rouler vers l'endroit où le
         // joueur SERA (position + vitesse × anticipation), à fond, sans le
         // contourner ; au contact (< 40 m), en ligne droite. Face à lui à moins de
@@ -935,6 +1002,14 @@ namespace GTAMax
         void DonnerOrdre(UnitePolice u, Ped joueur)
         {
             Ped c = u.Conducteur;
+            if (u.Renfort)
+            {
+                // Combat redonné s'il l'a perdu ; même à pied, il poursuit.
+                if (c != null && c.Exists() && !c.IsDead && !Function.Call<bool>(Hash.IS_PED_IN_COMBAT, c, joueur))
+                    Function.Call(Hash.TASK_COMBAT_PED, c, joueur, 0, 16);
+                if (c != null && c.Exists() && !c.IsDead && u.Voiture.Exists() && c.IsInVehicle(u.Voiture)) CoupDAccelerateur(u, joueur);
+                return;
+            }
             if (c == null || !c.Exists() || c.IsDead || !u.Voiture.Exists() || !c.IsInVehicle(u.Voiture)) return;
             Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
             Vector3 vitesseJoueur = vj != null ? vj.Velocity : joueur.Velocity;
@@ -945,6 +1020,16 @@ namespace GTAMax
             Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, c, u.Voiture, vise.X, vise.Y, vise.Z, VITESSE_TRAQUE, 1,
                 u.ModeleHash, Regles.StyleConduite(distance, DISTANCE_LIGNE_DROITE_M), 0.5f, 1f);
 
+            CoupDAccelerateur(u, joueur);
+        }
+
+        // Face au joueur à moins de 15 m et pas plus vite que lui : coup d'accélérateur pour percuter.
+        static void CoupDAccelerateur(UnitePolice u, Ped joueur)
+        {
+            Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
+            Vector3 vitesseJoueur = vj != null ? vj.Velocity : joueur.Velocity;
+            Vector3 versJoueur = joueur.Position - u.Voiture.Position;
+            float distance = versJoueur.Length();
             float vitesseCible = vitesseJoueur.Length();
             Vector3 avant = u.Voiture.ForwardVector;
             if (distance < DISTANCE_COUP_M && u.Voiture.Speed < vitesseCible + 3f

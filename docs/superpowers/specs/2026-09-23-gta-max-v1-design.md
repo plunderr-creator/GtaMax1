@@ -97,33 +97,33 @@ vieux que sa source.
   est jetée (joueur mort, cinématique, chargement : on attend, puis on ne
   rattrape pas).
 - Modèle tiré au sort dans `GTAMax.ini` (`[POLICE] MODELES`), par défaut
-  `police, police2, police3, sheriff`. **`policet` est retiré par défaut** :
-  chez nous c'est le fourgon CRS qui fait planter le jeu pendant les
-  poursuites (constaté le 2026-09-22). Le remettre = l'ajouter à la ligne.
-  Un modèle absent du jeu est journalisé et ignoré.
+  **`pranger, policet`** (révisé après le premier test en jeu, voir
+  « Retour du test en jeu » en bas). Un modèle absent du jeu est journalisé
+  et ignoré.
 - Position : 20 m devant le joueur (+ 1 s de trajet s'il roule, plafonné à
   60 m, pour ne pas le faire apparaître dans son pare-chocs), recalée sur la
   route la plus proche ; repli sur le point au sol s'il n'y a pas de route à
   moins de 60 m. Orientée vers le joueur.
 - Chargement des modèles **sans bloquer** : demande au tick N, création
   quand ils sont chargés, abandon après 5 s.
-- Deux `s_m_y_cop_01` (conducteur + passager). Sirène + gyrophares.
+- Un seul `s_m_y_cop_01` (tenue Police Nationale), au volant. Sirène + gyrophares.
 - **ELS** : si `ELS.asi` est à la racine du jeu **et** qu'un VCF
   `ELS\pack_default\<modèle>.xml` existe, on active la sirène et on laisse
   ELS gérer (on ne touche pas au mute) ; sinon, feux vanilla : sirène active
   et son forcé. Aujourd'hui ELS est désactivé (`_test_off\`) : c'est le cas
   vanilla qui joue, et ça bascule tout seul si ELS revient.
-- Poursuite : joueur en véhicule → `TASK_VEHICLE_CHASE` ; joueur à pied →
-  le conducteur fonce vers lui. L'ordre est réémis quand le joueur change
-  d'état, et toutes les 3 s à pied (sa position bouge). Conducteurs
-  « garde ta tâche » + événements bloqués : ils ne fuient pas, ne
-  descendent pas se battre.
+- **Percuter** : en voiture comme à pied, le conducteur a l'ordre de percuter
+  le joueur (`TASK_VEHICLE_MISSION_PED_TARGET`, mission RAM, style de conduite
+  qui ne contourne pas le joueur), réémis toutes les 4 s. Conducteur « garde
+  ta tâche » + événements bloqués (ne fuit pas, ne descend pas se battre) +
+  ne traverse pas le pare-brise au choc.
 - **Parc** : 8 voitures vivantes max ; la 9e fait supprimer la plus ancienne
   (sauf si le joueur est dedans : elle est alors seulement lâchée).
-- **Nettoyage** : tout est marqué non persistant dès l'apparition (le jeu
-  les ramasse quand il veut) ; une épave est supprimée 8 s après sa mort ;
-  mort ou arrestation du joueur = fin de poursuite, les unités sont lâchées.
-  Un script déchargé (touche Inser, fermeture) lâche tout ce qu'il suivait.
+- **Nettoyage** : voiture et policier restent persistants TANT QU'ILS
+  POURSUIVENT ; distancés à plus de 250 m pendant 15 s, ils sont lâchés (le
+  jeu les efface quand il veut) ; une épave est supprimée 8 s après sa mort ;
+  mort ou arrestation du joueur = fin de poursuite, tout est lâché. Un script
+  déchargé (`Reload()` dans la console, fermeture) lâche tout ce qu'il suivait.
 
 ### 4. Alerte don — seul élément visuel
 
@@ -203,3 +203,24 @@ Toute mécanique de viewer (économie, progression, commandes autres que
 `!aide`), fil de chat ou compteur à l'écran, sons d'alerte, image du cadeau,
 archivage du roster, réponse écrite dans le chat TikTok, modification des
 `.rpf` ou du dossier `mods\`.
+
+## Retour du test en jeu (2026-09-23)
+
+Premier test : ça marche (file, 3 s d'écart, apparition, gyrophares vanilla),
+mais trois écarts avec ce que veut le streamer :
+
+- **Voitures américaines.** Scan des archives : seuls `pranger` (voiture
+  Police Nationale) et `policet` (fourgon CRS) sont remplacés par des modèles
+  français. `police`, `police2`, `police4`, `sheriff`, `sheriff2`, `riot`…
+  sont vanilla, et le modèle français posé sur `police3` est écrasé par
+  `patchday3ng`/`patchday4ng`. → `MODELES=pranger,policet`, 50/50.
+  ⚠️ `policet` a déjà fait planter le jeu pendant une poursuite le
+  2026-09-22 (piste : LOD inversés, `policet.yft` 6,9 Mo > `policet_hi.yft`
+  3,5 Mo). Demandé explicitement : gardé, avec l'avertissement dans
+  `GTAMax.ini`.
+- **Pas de percussion.** → mission RAM réémise toutes les 4 s (voir « Percuter »).
+- **Deux policiers par voiture.** → un seul, au volant.
+
+Constaté dans `GTAMax.log` : marquées non persistantes dès l'apparition, les
+voitures étaient effacées par le jeu 15 à 80 s plus tard (hors champ derrière
+le joueur). → persistantes tant qu'elles poursuivent, lâchées à 250 m / 15 s.

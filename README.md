@@ -28,9 +28,11 @@ cocher **« Contrôler l'audio via OBS »** (la voix sort dans la source).
 **Côté jeu** (déjà fait le 2026-09-23) :
 - ScriptHookVDotNet v3 **nightly** (v3.7.0-nightly.190, obligatoire pour le jeu
   en build 3889) à la racine du jeu. Console SHVDN sur **F8** (F4 = TrainerV).
-- **`Installer plugin GTA.bat`**, GTA V fermé : compile `scripts\GTAMax.cs` en
+- **`Installer plugin GTA.bat`** : compile `scripts\GTAMax.cs` en
   `<GTA V>\scripts\GTAMax.dll` et dépose `GTAMax.ini`. À relancer après toute
-  modification de `GTAMax.cs` (le setup dit « pas à jour » sinon).
+  modification de `GTAMax.cs` (le setup dit « pas à jour » sinon). Jeu ouvert :
+  SHVDN travaille sur une copie de la DLL, l'installation passe ; ensuite **F8**,
+  `Reload()`.
 
 **Vérifier** : bouton **« Tester un don »** du setup → alerte sur l'overlay,
 merci vocal, voiture de police en jeu (roster non touché).
@@ -55,9 +57,13 @@ carte « État » dit combien il y en a.
 ## Réglages du plugin
 
 `<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation) :
-modèles tirés au sort (`police, police2, police3, sheriff` — **`policet` retiré** :
-le fourgon CRS installé à sa place fait planter le jeu en poursuite), distance
-(20 m), une voiture toutes les 3 s, 8 voitures max, 20 demandes en attente max.
+modèles tirés au sort (**`pranger`** = voiture Police Nationale, **`policet`** =
+fourgon CRS — ⚠️ il a déjà fait planter le jeu en poursuite : le retirer de la
+ligne en cas de plantage), distance (20 m), une voiture toutes les 3 s, 8 voitures
+max, 20 demandes en attente max. Un policier par voiture, qui essaie de te
+percuter.
+**Recharger après une modif** (ini ou plugin) sans relancer le jeu : **F8**, taper
+`Reload()`, Entrée.
 Journal du plugin : `<GTA V>\scripts\GTAMax.log`. Journal du serveur :
 `app\logs\gtamax.log` (ou « Télécharger les logs » dans le setup).
 
@@ -68,7 +74,7 @@ Journal du plugin : `<GTA V>\scripts\GTAMax.log`. Journal du serveur :
    `registre.Enregistrer("MON_ACTION", MonAction);`.
 2. Côté serveur, l'appeler par le seul pont : `envoyerCommande('MON_ACTION', { cle: 'valeur' })`
    (`app/gta-bridge.js`). Verbe `[A-Z0-9_]`, clés `[a-z0-9_]`.
-3. `Installer plugin GTA.bat`, relancer le jeu.
+3. `Installer plugin GTA.bat`, puis en jeu **F8** → `Reload()`.
 
 Un verbe inconnu du plugin est journalisé et ignoré. Une commande de plus de
 60 s n'est jamais jouée.

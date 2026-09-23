@@ -11,8 +11,9 @@ if not exist "node\node.exe" (
 )
 echo.
 echo  Compilation de scripts\GTAMax.cs et installation dans le dossier de GTA V.
-echo  GTA V doit etre FERME (sinon GTAMax.dll est verrouillee).
 echo.
 "node\node.exe" outils\plugin.js installer
+echo.
+echo  GTA V deja ouvert : en jeu, touche F8, taper Reload() puis Entree.
 echo.
 pause

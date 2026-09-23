@@ -117,7 +117,7 @@ test('persistance : BOM Notepad et champ viewers absent tolérés', () => {
   assert.strictEqual(p.donnees.autre, 1);   // un champ inconnu (futur gameplay) n'est jamais jeté
 });
 
-test('persistance : sauver() est débouncé', async () => {
+test('persistance : sauver() regroupe une rafale en une écriture', async () => {
   const d = bac();
   const p = creerPersistance({ dossier: d, delaiMs: 30, log: muet });
   roster.vu(p.donnees.viewers, 'alice', 1);
@@ -125,4 +125,14 @@ test('persistance : sauver() est débouncé', async () => {
   assert.strictEqual(fs.existsSync(path.join(d, 'data.json')), false);
   await new Promise(r => setTimeout(r, 80));
   assert.ok(JSON.parse(fs.readFileSync(path.join(d, 'data.json'), 'utf8')).viewers.alice);
+});
+
+test('persistance : une activité continue n\'empêche jamais d\'écrire', async () => {
+  // Un debounce pur repousserait l'écriture tant que les appels continuent.
+  const d = bac();
+  const p = creerPersistance({ dossier: d, delaiMs: 40, log: muet });
+  roster.vu(p.donnees.viewers, 'alice', 1);
+  const fin = Date.now() + 200;
+  while (Date.now() < fin) { p.sauver(); await new Promise(r => setTimeout(r, 10)); }
+  assert.ok(fs.existsSync(path.join(d, 'data.json')), 'aucune écriture pendant 200 ms d\'activité');
 });

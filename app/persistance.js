@@ -86,9 +86,13 @@ function creerPersistance({ dossier, delaiMs = 500, copieMs = 60000, log = conso
     }
   }
 
+  // Regroupe les écritures : au plus une toutes les delaiMs, et toujours au
+  // plus delaiMs après le dernier changement. Le debounce pur de Final Max
+  // repoussait l'écriture à CHAQUE appel : sous une rafale continue de likes
+  // (une trame toutes les 300 ms), il n'écrivait jamais avant la fin du live.
   function sauver() {
-    clearTimeout(timer);
-    timer = setTimeout(sauverMaintenant, delaiMs);   // debounce : une rafale de likes = une écriture
+    if (timer) return;
+    timer = setTimeout(sauverMaintenant, delaiMs);
   }
 
   return { donnees, sauver, sauverMaintenant };

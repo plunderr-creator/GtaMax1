@@ -332,6 +332,28 @@ namespace GTAMax
             return (avantX * versX + avantY * versY) / (na * nv) >= cosMin;
         }
 
+        // MODE de GTAMax.ini : « etoiles », « voitures » ou « les_deux » (casse,
+        // accents, espaces et tirets ignorés). Inconnu → etoiles, le mode par défaut.
+        public static void Mode(string texte, out bool etoiles, out bool voitures)
+        {
+            string m = (texte ?? "").Trim().ToLowerInvariant()
+                .Replace("é", "e").Replace("è", "e").Replace(" ", "_").Replace("-", "_");
+            etoiles = m != "voitures";
+            voitures = m == "voitures" || m == "les_deux";
+        }
+
+        // Étoiles visées après un cadeau : on part du plus haut entre le niveau
+        // actuel et la cible en cours, on ajoute, on plafonne à max — et on ne
+        // baisse jamais (5 étoiles gagnées en jouant restent 5 étoiles).
+        public static int EtoilesVisees(int niveauActuel, int viseesAvant, int parCadeau, int max)
+        {
+            int depart = Math.Max(Math.Max(0, niveauActuel), Math.Max(0, viseesAvant));
+            return Math.Max(depart, Math.Min(Math.Max(0, max), depart + Math.Max(0, parCadeau)));
+        }
+
+        // Ped de police au sens du jeu (GET_PED_TYPE) : COP 6, SWAT 27, ARMY 29.
+        public static bool EstPolice(int typePed) { return typePed == 6 || typePed == 27 || typePed == 29; }
+
         // Semée = loin du joueur ET hors de l'écran : on peut la faire réapparaître
         // derrière lui sans qu'il la voie disparaître.
         public static bool EstSemee(float distanceM, bool visible, float distanceMin)
@@ -481,6 +503,15 @@ namespace GTAMax
         float distanceM;
         float bonusMoteur;       // % de puissance et de vitesse de pointe en plus (MODIFY_VEHICLE_TOP_SPEED)
         int rattrapagesMax;      // réapparitions derrière le joueur par voiture semée
+
+        // Mode « étoiles » : un cadeau = une étoile de recherche, la vraie police du jeu.
+        bool modeEtoiles, modeVoitures;
+        int etoilesParCadeau, etoilesMax, tenueMs;
+        bool tirsAutorises, helicosAutorises;
+        int etoilesVisees;       // niveau que les cadeaux imposent (0 = aucun)
+        int tenueJusquA;         // Game.GameTime : jusque-là, la police sait toujours où est le joueur
+        int prochainDesarmement, prochaineTenue, prochainDispatch;
+        bool dispatchModifie;
         ChargementEnCours chargement;
         int prochainEntretien;
 
@@ -503,11 +534,18 @@ namespace GTAMax
 
         void ChargerReglages()
         {
-            string liste = MODELES_DEFAUT;
+            string liste = MODELES_DEFAUT, mode = "etoiles";
             int intervalle = 3000, maxVoitures = 8, maxAttente = 20, rattrapages = 3;
+            int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0;
             float distance = 20f, bonus = 40f;
             try
             {
+                mode        = Settings.GetValue<string>("MODE", "MODE", mode);
+                parCadeau   = Settings.GetValue<int>("ETOILES", "PAR_CADEAU", parCadeau);
+                maxEtoiles  = Settings.GetValue<int>("ETOILES", "MAX", maxEtoiles);
+                tenueS      = Settings.GetValue<int>("ETOILES", "TENUE_S", tenueS);
+                tirs        = Settings.GetValue<int>("ETOILES", "TIRS", tirs);
+                helicos     = Settings.GetValue<int>("ETOILES", "HELICOS", helicos);
                 liste       = Settings.GetValue<string>("POLICE", "MODELES", liste);
                 distance    = Settings.GetValue<float>("POLICE", "DISTANCE_M", distance);
                 intervalle  = Settings.GetValue<int>("POLICE", "INTERVALLE_MS", intervalle);
@@ -523,6 +561,15 @@ namespace GTAMax
             distanceM = Regles.Borne(distance, 5f, PLAFOND_DISTANCE_M);
             bonusMoteur = Regles.Borne(bonus, 0f, 200f);
             rattrapagesMax = Regles.Borne(rattrapages, 0, 20);
+            Regles.Mode(mode, out modeEtoiles, out modeVoitures);
+            etoilesParCadeau = Regles.Borne(parCadeau, 1, 5);
+            etoilesMax = Regles.Borne(maxEtoiles, 1, 5);
+            tenueMs = Regles.Borne(tenueS, 0, 600) * 1000;
+            tirsAutorises = tirs != 0;
+            helicosAutorises = helicos != 0;
+            journal.Info("Mode : " + (modeEtoiles && modeVoitures ? "les deux" : modeEtoiles ? "étoiles" : "voitures")
+                + (modeEtoiles ? " — +" + etoilesParCadeau + " étoile(s) par cadeau, " + etoilesMax + " max, tenue " + (tenueMs / 1000)
+                    + " s, police " + (tirsAutorises ? "armée" : "SANS armes") + ", hélicos " + (helicosAutorises ? "oui" : "NON") : ""));
             fileSpawn = new FileSpawn<DemandeSpawn>(Regles.Borne(intervalle, 500, 60000), Regles.Borne(maxAttente, 1, 200), AGE_MAX_DEMANDE_MS);
             parc = new Parc<UnitePolice>(Regles.Borne(maxVoitures, 1, 30));
             journal.Info("Réglages : modèles " + string.Join(", ", modeles) + " ; " + distanceM + " m derrière ; 1 voiture / "
@@ -550,16 +597,28 @@ namespace GTAMax
                 }
             }
             catch (Exception ex) { journal.ErreurLimitee("entretien", "Entretien des poursuites : " + ex); }
+
+            if (modeEtoiles)
+            {
+                try { EntretenirEtoiles(); }
+                catch (Exception ex) { journal.ErreurLimitee("etoiles", "Mode étoiles : " + ex); }
+            }
         }
 
         // Script déchargé (fermeture du jeu, rechargement SHVDN) : on lâche tout ce
-        // qu'on suivait, rien ne reste marqué « à nous ».
+        // qu'on suivait, rien ne reste marqué « à nous », et le jeu retrouve ses
+        // hélicoptères de police.
         void SurArret(object sender, EventArgs e)
         {
             try
             {
                 AbandonnerChargement();
                 if (parc != null) foreach (UnitePolice u in parc.Retirer(delegate (UnitePolice x) { return true; })) Lacher(u);
+                if (dispatchModifie)
+                {
+                    Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, true);
+                    Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_SWAT, true);
+                }
                 journal.Info("Plugin GTA Max arrêté.");
             }
             catch (Exception) { }
@@ -578,13 +637,105 @@ namespace GTAMax
         }
 
         // ─── SPAWN_POLICE ─────────────────────────────────────────────────
+        // Le serveur ne sait pas COMMENT la police arrive : c'est le MODE de
+        // GTAMax.ini qui décide (étoiles de recherche, voitures du script, ou les deux).
         void SpawnPolice(Commande c)
         {
+            if (modeEtoiles) AjouterEtoiles(c.Arg("donateur"));
+            if (!modeVoitures) return;
             var d = new DemandeSpawn { Donateur = c.Arg("donateur"), Cadeau = c.Arg("cadeau") };
             if (fileSpawn.Ajouter(d, Game.GameTime))
                 journal.Info("Voiture de police en file (" + fileSpawn.Count + " en attente) — " + d.Donateur + " / " + d.Cadeau);
             else
                 journal.Info("File des voitures pleine : cadeau de " + d.Donateur + " sans voiture");
+        }
+
+        // ─── MODE ÉTOILES ─────────────────────────────────────────────────
+        // Un cadeau = une étoile de recherche : c'est la VRAIE police du jeu qui
+        // poursuit (dispatch.meta : voitures pranger Police Nationale jusqu'à 3
+        // étoiles), avec ses vraies manœuvres (percussions, PIT, barrages). Trois
+        // réglages en font un jeu de cadeaux : police sans armes (elle ne tire
+        // pas, elle percute et arrête), pas d'hélicoptères, et une TENUE — tant
+        // qu'elle dure, la police sait toujours où est le joueur.
+        const int DISPATCH_HELICO_POLICE = 2, DISPATCH_HELICO_SWAT = 12;   // ENABLE_DISPATCH_SERVICE
+        const int DESARMEMENT_MS = 500, TENUE_VERIF_MS = 1000, DISPATCH_VERIF_MS = 5000;
+        const float RAYON_DESARMEMENT_M = 300f;
+        const int ARME_A_FEU_OU_EXPLOSIF = 6;      // IS_PED_ARMED : 2 explosifs + 4 armes à feu (la matraque reste)
+
+        void AjouterEtoiles(string donateur)
+        {
+            if (!JoueurDisponible()) { journal.Info("Étoile de " + donateur + " ignorée : joueur mort, en chargement ou en cinématique"); return; }
+            if (Function.Call<bool>(Hash.GET_MISSION_FLAG)) { journal.Info("Étoile de " + donateur + " ignorée : mission en cours (on ne casse pas la mission)"); return; }
+            int actuel = Function.Call<int>(Hash.GET_PLAYER_WANTED_LEVEL, Game.Player.Handle);
+            etoilesVisees = Regles.EtoilesVisees(actuel, etoilesVisees, etoilesParCadeau, etoilesMax);
+            if (actuel < etoilesVisees) AppliquerEtoiles(etoilesVisees);
+            tenueJusquA = Game.GameTime + tenueMs;
+            Function.Call(Hash.REPORT_POLICE_SPOTTED_PLAYER, Game.Player.Handle);
+            journal.Info("Étoiles : " + actuel + " → " + Math.Max(actuel, etoilesVisees) + " (cadeau de " + donateur
+                + "), la police sait où est le joueur pendant " + (tenueMs / 1000) + " s");
+        }
+
+        static void AppliquerEtoiles(int n)
+        {
+            Function.Call(Hash.SET_PLAYER_WANTED_LEVEL, Game.Player.Handle, n, false);
+            Function.Call(Hash.SET_PLAYER_WANTED_LEVEL_NOW, Game.Player.Handle, false);
+        }
+
+        void EntretenirEtoiles()
+        {
+            int maintenant = Game.GameTime;
+
+            // Hélicoptères : coupés dans le dispatch, revérifié toutes les 5 s (une
+            // mission ou un autre script peut les rallumer), rendus à l'arrêt du script.
+            if (!helicosAutorises && maintenant >= prochainDispatch)
+            {
+                prochainDispatch = maintenant + DISPATCH_VERIF_MS;
+                Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, false);
+                Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_SWAT, false);
+                dispatchModifie = true;
+            }
+
+            Ped joueur = Game.Player.Character;
+            if (joueur == null || !joueur.Exists()) return;
+
+            // Police sans armes : toutes les 0,5 s, tout policier armé à moins de
+            // 300 m perd ses armes à feu. Ceux que le jeu vient de faire apparaître
+            // n'ont donc jamais le temps de tirer.
+            if (!tirsAutorises && maintenant >= prochainDesarmement)
+            {
+                prochainDesarmement = maintenant + DESARMEMENT_MS;
+                foreach (Ped p in World.GetNearbyPeds(joueur, RAYON_DESARMEMENT_M))
+                {
+                    if (p == null || !p.Exists() || p.IsDead) continue;
+                    if (!Regles.EstPolice(Function.Call<int>(Hash.GET_PED_TYPE, p))) continue;
+                    if (Function.Call<bool>(Hash.IS_PED_ARMED, p, ARME_A_FEU_OU_EXPLOSIF))
+                        Function.Call(Hash.REMOVE_ALL_PED_WEAPONS, p, true);
+                }
+            }
+
+            // Tenue : tant qu'elle dure, les étoiles ne descendent pas sous la cible
+            // et la police revoit le joueur dès que ses étoiles grisent. Mort ou
+            // arrêté : le jeu a effacé les étoiles, la tenue s'arrête avec.
+            if (etoilesVisees > 0 && maintenant >= prochaineTenue)
+            {
+                prochaineTenue = maintenant + TENUE_VERIF_MS;
+                if (joueur.IsDead || Function.Call<bool>(Hash.IS_PLAYER_BEING_ARRESTED, Game.Player.Handle, true))
+                {
+                    journal.Info("Joueur mort ou arrêté : fin de la tenue des étoiles");
+                    etoilesVisees = 0; tenueJusquA = 0;
+                }
+                else if (maintenant >= tenueJusquA)
+                {
+                    journal.Info("Fin de la tenue : le joueur peut semer la police");
+                    etoilesVisees = 0;
+                }
+                else
+                {
+                    if (Function.Call<int>(Hash.GET_PLAYER_WANTED_LEVEL, Game.Player.Handle) < etoilesVisees) AppliquerEtoiles(etoilesVisees);
+                    if (Function.Call<bool>(Hash.ARE_PLAYER_STARS_GREYED_OUT, Game.Player.Handle))
+                        Function.Call(Hash.REPORT_POLICE_SPOTTED_PLAYER, Game.Player.Handle);
+                }
+            }
         }
 
         bool JoueurDisponible()

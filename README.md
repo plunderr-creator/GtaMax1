@@ -56,12 +56,21 @@ carte « État » dit combien il y en a.
 
 ## Réglages du plugin
 
-`<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation) :
-modèles tirés au sort (**`pranger`** = voiture Police Nationale ; **`policet`**, le
-fourgon CRS, est retiré pour l'instant : il s'arrête juste après être apparu), distance
-derrière toi (20 m), moteur +40 %, 3 réapparitions derrière toi si tu la sèmes, une voiture toutes les 3 s, 8 voitures
-max, 20 demandes en attente max. Un policier par voiture, qui essaie de te
-percuter.
+`<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation).
+
+**`MODE=etoiles`** (défaut) : chaque cadeau ajoute une étoile de recherche (3
+max) et c'est la vraie police du jeu qui te poursuit — tes voitures Police
+Nationale du `dispatch.meta` —, **sans armes** (elle percute et arrête, ne
+tire jamais) et **sans hélicoptères**. Pendant 45 s après chaque cadeau, elle
+sait toujours où tu es. Réglages dans `[ETOILES]` : `PAR_CADEAU`, `MAX`,
+`TENUE_S`, `TIRS`, `HELICOS`. Pas d'étoile pendant une mission.
+
+**`MODE=voitures`** : le script fait apparaître ses propres voitures (section
+`[POLICE]`) : **`pranger`** = voiture Police Nationale (**`policet`**, le fourgon
+CRS, est retiré pour l'instant : il s'arrête juste après être apparu), 20 m
+derrière toi, moteur +40 %, 3 réapparitions derrière toi si tu la sèmes, une
+voiture toutes les 3 s, 8 max, un policier par voiture. **`MODE=les_deux`** :
+les deux à la fois.
 **Recharger après une modif** (ini ou plugin) sans relancer le jeu : **F8**, taper
 `Reload()`, Entrée.
 Journal du plugin : `<GTA V>\scripts\GTAMax.log`. Journal du serveur :

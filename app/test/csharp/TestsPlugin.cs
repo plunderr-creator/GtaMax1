@@ -188,6 +188,22 @@ static class TestsPlugin
         Verifier("plantée : au contact après une percussion, non", !Regles.EstPlantee(0f, 5f, 2f, 12f), "plantée");
         Verifier("plantée : elle roule, non", !Regles.EstPlantee(15f, 40f, 2f, 12f), "plantée");
 
+        // Mode : étoiles par défaut, voitures, ou les deux.
+        bool me, mv;
+        Regles.Mode("etoiles", out me, out mv);  Verifier("mode etoiles", me && !mv, me + "/" + mv);
+        Regles.Mode("Étoiles ", out me, out mv); Verifier("mode Étoiles (accent, casse, espace)", me && !mv, me + "/" + mv);
+        Regles.Mode("voitures", out me, out mv); Verifier("mode voitures", !me && mv, me + "/" + mv);
+        Regles.Mode("les-deux", out me, out mv); Verifier("mode les-deux", me && mv, me + "/" + mv);
+        Regles.Mode("n'importe", out me, out mv); Verifier("mode inconnu → étoiles", me && !mv, me + "/" + mv);
+
+        // Étoiles : +1 par cadeau, plafond, jamais à la baisse.
+        Verifier("étoiles : 0 → 1", Regles.EtoilesVisees(0, 0, 1, 3) == 1, Regles.EtoilesVisees(0, 0, 1, 3).ToString());
+        Verifier("étoiles : rafale 1 → 2 → 3", Regles.EtoilesVisees(1, 1, 1, 3) == 2 && Regles.EtoilesVisees(2, 2, 1, 3) == 3, "");
+        Verifier("étoiles : plafonnées à 3", Regles.EtoilesVisees(3, 3, 1, 3) == 3, Regles.EtoilesVisees(3, 3, 1, 3).ToString());
+        Verifier("étoiles : la cible en cours compte même si le jeu a baissé", Regles.EtoilesVisees(1, 2, 1, 3) == 3, Regles.EtoilesVisees(1, 2, 1, 3).ToString());
+        Verifier("étoiles : 5 gagnées en jouant restent 5", Regles.EtoilesVisees(5, 0, 1, 3) == 5, Regles.EtoilesVisees(5, 0, 1, 3).ToString());
+        Verifier("police : cop, SWAT, armée ; pas un civil", Regles.EstPolice(6) && Regles.EstPolice(27) && Regles.EstPolice(29) && !Regles.EstPolice(4), "");
+
         // Traque : viser où le joueur SERA.
         Verifier("anticipation : 30 m à 30 m/s → 1 s", Math.Abs(Regles.Anticipation(30f, 30f) - 1f) < 1e-4, Regles.Anticipation(30f, 30f) + " s");
         Verifier("anticipation : à l'arrêt, la vitesse plancher (10 m/s) évite la division par 0", Math.Abs(Regles.Anticipation(5f, 0f) - 0.5f) < 1e-4, Regles.Anticipation(5f, 0f) + " s");

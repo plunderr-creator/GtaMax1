@@ -178,10 +178,21 @@ static class TestsPlugin
         List<string> modeles = Regles.ListeModeles(" Police, police2 ;POLICE3  sheriff,police ,, ");
         Verifier("ini : liste de modèles nettoyée, sans doublon", string.Join(",", modeles.ToArray()) == "police,police2,police3,sheriff",
             string.Join(",", modeles.ToArray()));
-        Verifier("distance : 20 m à l'arrêt", Regles.DistanceApparition(20f, 0f, 60f) == 20f, "");
-        Verifier("distance : +1 s de trajet en roulant", Regles.DistanceApparition(20f, 15f, 60f) == 35f, "");
-        Verifier("distance : plafonnée à 60 m", Regles.DistanceApparition(20f, 80f, 60f) == 60f, "");
-        Verifier("distance : jamais sous la base (marche arrière)", Regles.DistanceApparition(20f, -10f, 60f) == 20f, "");
+        // Apparition derrière le joueur : il regarde vers +Y.
+        Verifier("derrière : un point au sud d'un joueur tourné au nord", Regles.EstDerriere(0f, -20f, 0f, 1f), "devant");
+        Verifier("derrière : un point devant est refusé", !Regles.EstDerriere(3f, 15f, 0f, 1f), "derrière");
+        Verifier("derrière : pile sur le côté n'est pas derrière", !Regles.EstDerriere(20f, 0f, 0f, 1f), "derrière");
+
+        // Voiture plantée = ne roule pas loin du joueur ; au contact, l'arrêt est normal.
+        Verifier("plantée : à l'arrêt à 40 m", Regles.EstPlantee(0.5f, 40f, 2f, 12f), "non plantée");
+        Verifier("plantée : au contact après une percussion, non", !Regles.EstPlantee(0f, 5f, 2f, 12f), "plantée");
+        Verifier("plantée : elle roule, non", !Regles.EstPlantee(15f, 40f, 2f, 12f), "plantée");
+
+        // Façons de conduire : tour à tour, puis on recommence.
+        int s0 = 0, s1 = Regles.StrategieSuivante(s0), s2 = Regles.StrategieSuivante(s1), s3 = Regles.StrategieSuivante(s2);
+        Verifier("façons de conduire : percuter → poursuivre → foncer → percuter",
+            Regles.STRATEGIES[s0] == "percuter" && Regles.STRATEGIES[s1] == "poursuivre" && Regles.STRATEGIES[s2] == "foncer" && s3 == 0,
+            s0 + "," + s1 + "," + s2 + "," + s3);
 
         return echecs == 0 ? 0 : 1;
     }

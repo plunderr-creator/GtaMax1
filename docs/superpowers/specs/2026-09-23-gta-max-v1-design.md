@@ -100,10 +100,11 @@ vieux que sa source.
   **`pranger, policet`** (révisé après le premier test en jeu, voir
   « Retour du test en jeu » en bas). Un modèle absent du jeu est journalisé
   et ignoré.
-- Position : 20 m devant le joueur (+ 1 s de trajet s'il roule, plafonné à
-  60 m, pour ne pas le faire apparaître dans son pare-chocs), recalée sur la
-  route la plus proche ; repli sur le point au sol s'il n'y a pas de route à
-  moins de 60 m. Orientée vers le joueur.
+- Position : 20 m **derrière** le joueur, recalée sur la route la plus proche
+  (une route trouvée devant lui est refusée) ; repli sur le point au sol
+  derrière lui sinon. Orientée vers le joueur. S'il roule, la voiture part
+  lancée à sa vitesse (`SET_VEHICLE_FORWARD_SPEED`), sinon elle ne le
+  rattraperait jamais.
 - Chargement des modèles **sans bloquer** : demande au tick N, création
   quand ils sont chargés, abandon après 5 s.
 - Un seul `s_m_y_cop_01` (tenue Police Nationale), au volant. Sirène + gyrophares.
@@ -224,3 +225,11 @@ mais trois écarts avec ce que veut le streamer :
 Constaté dans `GTAMax.log` : marquées non persistantes dès l'apparition, les
 voitures étaient effacées par le jeu 15 à 80 s plus tard (hors champ derrière
 le joueur). → persistantes tant qu'elles poursuivent, lâchées à 250 m / 15 s.
+
+Deuxième test : le fourgon CRS apparaît mais ne bouge pas (journal : lâché
+65 s plus tard, distancé). Son modèle a pourtant roues, siège conducteur et
+physique (os lus dans `mods\x64e.rpf`). Cause inconnue d'ici → trois façons
+de conduire (percuter / poursuivre / foncer), essayées tour à tour quand une
+voiture reste 3 s à l'arrêt loin du joueur, et une ligne de diagnostic 5 s
+après chaque apparition (vitesse, distance, policier au volant, moteur,
+roues au sol, attente du sol). Apparition déplacée derrière le joueur.

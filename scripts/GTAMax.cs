@@ -392,6 +392,7 @@ namespace GTAMax
         public int MorteA;           // Game.GameTime de la mort de la voiture (0 = vivante)
         public Poursuite Mode;
         public int DernierOrdreA;
+        public int ImmobileDepuis;   // Game.GameTime depuis lequel elle ne bouge plus loin du joueur (0 = elle roule)
     }
 
     public class GTAMax : Script
@@ -402,6 +403,8 @@ namespace GTAMax
         const int EPAVE_MS = 8000;                 // une épave reste visible 8 s puis disparaît
         const int ENTRETIEN_MS = 1000;             // suivi des poursuites et du nettoyage
         const int ORDRE_A_PIED_MS = 3000;          // joueur à pied : la cible bouge, on réoriente toutes les 3 s
+        const int PLANTEE_MS = 5000;               // voiture immobile loin du joueur : nouvel ordre au bout de 5 s
+        const float DISTANCE_PLANTEE_M = 25f;
         const float PLAFOND_DISTANCE_M = 60f;
         const string PED_POLICE = "s_m_y_cop_01";
         const int CONDUITE_EVITE_TRAFIC = 786468;  // style de conduite « contourne le trafic »
@@ -597,12 +600,6 @@ namespace GTAMax
             Vector3 position = PointDApparition(joueur);
             float cap = (joueur.Position - position).ToHeading();   // orientée vers le joueur
 
-            foreach (UnitePolice vieille in parc.FaireDeLaPlace())
-            {
-                journal.Info("Plafond de " + parc.Max + " voitures : la plus ancienne (" + vieille.Nom + ") est retirée");
-                Supprimer(vieille);
-            }
-
             // Natives plutôt que les enveloppes SHVDN : World.CreateVehicle et
             // GetGroundHeight sont « obsolètes » dans les nightlies et leurs
             // remplaçantes n'existent pas en version stable. Une native, elle,
@@ -638,6 +635,13 @@ namespace GTAMax
             if (passager != null && passager.Exists()) passager.MarkAsNoLongerNeeded();
             v.MarkAsNoLongerNeeded();
 
+            // Plafond : la plus ancienne ne part qu'une fois la nouvelle bien créée
+            // (un refus du jeu ne doit pas faire disparaître une voiture pour rien).
+            foreach (UnitePolice vieille in parc.FaireDeLaPlace())
+            {
+                journal.Info("Plafond de " + parc.Max + " voitures : la plus ancienne (" + vieille.Nom + ") est retirée");
+                Supprimer(vieille);
+            }
             parc.Ajouter(u);
             journal.Info("Voiture « " + c.Nom + " » apparue pour " + (c.Demande.Donateur.Length > 0 ? c.Demande.Donateur : "?")
                 + " (" + parc.Count + "/" + parc.Max + ", gyrophares " + (els ? "ELS" : "vanilla") + ")");
@@ -742,9 +746,19 @@ namespace GTAMax
                 journal.Info("Épave « " + u.Nom + " » supprimée");
             }
 
-            // 5. Poursuite : réorienter selon l'état du joueur.
+            // 5. Poursuite : réorienter selon l'état du joueur. Une voiture plantée
+            // loin du joueur depuis 5 s (tâche finie, coincée contre un mur) reçoit
+            // un nouvel ordre — sans lire l'état interne de la tâche, qui dépend de
+            // hashes non documentés.
             foreach (UnitePolice u in parc.Unites)
-                if (u.MorteA == 0) DonnerOrdre(u, joueur);
+            {
+                if (u.MorteA != 0) continue;
+                bool plantee = u.Voiture.Speed < 1f && u.Voiture.Position.DistanceTo(joueur.Position) > DISTANCE_PLANTEE_M;
+                if (!plantee) u.ImmobileDepuis = 0;
+                else if (u.ImmobileDepuis == 0) u.ImmobileDepuis = Math.Max(1, maintenant);
+                else if (maintenant - u.ImmobileDepuis > PLANTEE_MS) { u.Mode = Poursuite.Aucune; u.ImmobileDepuis = 0; }
+                DonnerOrdre(u, joueur);
+            }
         }
 
         // Supprime une unité (plafond atteint, épave). Jamais la voiture où se trouve

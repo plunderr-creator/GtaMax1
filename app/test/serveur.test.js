@@ -90,6 +90,8 @@ test.before(async () => {
     tts: { enabled: false, voice: 'fr-FR-HenriNeural', volume: 0.8, read_username: false },
     gta: { dossier_jeu: jeu },
   }, null, 2));
+  // Un .env déjà rempli à la main : ses lignes doivent survivre à l'enregistrement du code de session.
+  fs.writeFileSync(path.join(bac, '.env'), '# réglage local\nALLOW_LAN_CONTROL=0\n');
   const env = { ...process.env };
   delete env.SESSION_ID; delete env.SIGN_API_KEY; delete env.TIKTOK_USERNAME; delete env.ALLOW_LAN_CONTROL;
   env.PORT = String(PORT);
@@ -200,4 +202,20 @@ test('WebSocket : une page d\'une autre origine ne peut pas s\'abonner', async (
 
 test('TTS : un id inconnu (évincé du cache) → 404 propre', async () => {
   assert.strictEqual((await requete('GET', '/api/tts/nexiste-pas')).code, 404);
+});
+
+// Dernier du fichier : il pose un SESSION_ID (sans pseudo TikTok, donc sans
+// aucune tentative de connexion réseau).
+test('code de session : nettoyé, rangé dans .env sans écraser le reste, jamais renvoyé', async () => {
+  const secret = 'abcdef0123456789abcdef';
+  const r = await requete('POST', '/api/config', { corps: { session_id: '"sessionid=' + secret + '"' } });
+  assert.strictEqual(r.code, 200, r.corps);
+  assert.ok(!r.corps.includes(secret));
+  const envTexte = fs.readFileSync(path.join(bac, '.env'), 'utf8');
+  assert.match(envTexte, /^SESSION_ID=abcdef0123456789abcdef$/m);
+  assert.match(envTexte, /^# réglage local$/m);
+  assert.match(envTexte, /^ALLOW_LAN_CONTROL=0$/m);
+  const c = await requete('GET', '/api/config');
+  assert.strictEqual(JSON.parse(c.corps)._hasSession, true);
+  assert.ok(!c.corps.includes(secret));
 });

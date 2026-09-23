@@ -64,6 +64,7 @@ const { creerPont, NOM_FICHIER }    = require('./gta-bridge'); // LE pont vers l
 const { creerRouteur }              = require('./commandes-chat');
 const { creerEvenements }           = require('./evenements');
 const { creerPersistance }          = require('./persistance');
+const { creerSimulation, trameChat, trameDon } = require('./simulation');   // tester sans live
 const { etatPlugin }                = require('./outils/plugin');
 
 // ─── CHEMINS ─────────────────────────────────────────────
@@ -295,6 +296,36 @@ const evenements = creerEvenements({
   log: console,
 });
 
+// ─── TESTER SANS LIVE ─────────────────────────────────────
+// TikTok n'envoie rien hors live. Le setup fabrique donc des messages et des
+// cadeaux (simulation.js) donnés aux VRAIS handlers avec { test: true } : même
+// chemin qu'en live (voix, commandes, alerte, SPAWN_POLICE), roster intact.
+// Le live simulé est coupé dès que le vrai live se connecte (setTikTokStatus).
+const simulation = creerSimulation({ evenements, log: console });
+
+function borne(v, min, max, defaut) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defaut;
+}
+// Un pseudo TikTok n'a pas d'espace : « Jean Dupont » devient « Jean_Dupont ».
+function pseudoDeTest(v) {
+  return String(v == null ? '' : v).trim().replace(/^@/, '').replace(/\s+/g, '_').slice(0, 30) || 'testeur';
+}
+// Le délai laisse le temps de revenir sur GTA avant que la voiture arrive.
+function plusTardTest(delaiS, fn) {
+  if (delaiS > 0) setTimeout(() => { try { fn(); } catch (e) { console.error('⚠️  Test en erreur :', (e && e.stack) || e); } }, delaiS * 1000);
+  else fn();
+}
+// Ce que le streamer doit savoir s'il n'entendra/ne verra rien.
+function noteTest(avecJeu) {
+  if (!clients.size) return ' ⚠️ Aucun overlay ouvert : ouvre OBS ou « Voir l\'overlay » pour entendre et voir.';
+  if (!avecJeu) return '';
+  const g = etatGta();
+  return !g.dossierOk ? ' ⚠️ Dossier GTA V introuvable : la voiture ne partira pas.'
+    : g.plugin === 'absent' ? ' ⚠️ Plugin non installé : lance « Installer plugin GTA.bat ».'
+    : g.plugin === 'perime' ? ' ⚠️ Plugin pas à jour : relance « Installer plugin GTA.bat ».' : '';
+}
+
 // ─── SERVEUR HTTP ─────────────────────────────────────────
 // LISTE BLANCHE STRICTE : seules ces URL servent un fichier. Tout le reste est
 // 404 — pas de .env, pas de config.json, pas de data.json, pas de code serveur,
@@ -498,15 +529,52 @@ const httpServer = http.createServer(async (req, res) => {
     // ══════════════════════════════════════════════════════
     if (req.method === 'GET' && url === '/api/gta/status') { json(res, etatGta()); return; }
 
-    // Toute la chaîne d'un vrai cadeau (alerte, merci vocal, SPAWN_POLICE) sans
-    // live et sans toucher au roster (evenements.simulerDon).
+    // ══════════════════════════════════════════════════════
+    //  API TEST — tester sans live (cf. « TESTER SANS LIVE »)
+    // ══════════════════════════════════════════════════════
+    if (req.method === 'GET' && url === '/api/overlay/status') { json(res, { connectes: clients.size }); return; }
+
+    // Un message de chat : lu par la voix, ou commande s'il commence par « ! ».
+    if (req.method === 'POST' && url === '/api/test/chat') {
+      const body = await parseBody(req);
+      const message = String(body.message == null ? '' : body.message).trim().slice(0, 300);
+      if (!message) { json(res, { ok: false, message: 'Écris un message à envoyer.' }, 400); return; }
+      const pseudo = pseudoDeTest(body.pseudo), delai = borne(body.delai_s, 0, 60, 0);
+      plusTardTest(delai, () => evenements.onChat(trameChat(pseudo, message), { test: true }));
+      const quoi = message.startsWith('!') ? 'Commande de test' : 'Message de test';
+      json(res, { ok: true, message: `${quoi} ${delai ? 'envoyé dans ' + delai + ' s' : 'envoyé'} 💬` + noteTest(false) });
+      return;
+    }
+
+    // Un cadeau (ou une rafale de cadeaux) : alerte, merci vocal, voiture en jeu.
+    // Corps vide = le bouton rapide « Tester un don » (testeur, Rose ×1).
     if (req.method === 'POST' && url === '/api/test/don') {
-      evenements.simulerDon();
-      const g = etatGta();
-      const note = !g.dossierOk ? ' ⚠️ Dossier GTA V introuvable : la voiture ne partira pas.'
-        : g.plugin === 'absent' ? ' ⚠️ Plugin non installé : lance « Installer plugin GTA.bat ».'
-        : g.plugin === 'perime' ? ' ⚠️ Plugin pas à jour : relance « Installer plugin GTA.bat ».' : '';
-      json(res, { ok: true, message: 'Don de test envoyé : alerte sur l\'overlay, voiture de police en jeu 🚨' + note });
+      const body = await parseBody(req);
+      const pseudo = pseudoDeTest(body.pseudo);
+      const cadeau = String(body.cadeau == null ? '' : body.cadeau).trim().slice(0, 50) || 'Rose';
+      const nombre = borne(body.nombre, 1, 99, 1), rafale = borne(body.rafale, 1, 10, 1), delai = borne(body.delai_s, 0, 60, 0);
+      plusTardTest(delai, () => { for (let i = 0; i < rafale; i++) evenements.onGift(trameDon(pseudo, cadeau, nombre), { test: true }); });
+      const quoi = rafale > 1 ? `${rafale} cadeaux de test` : 'Cadeau de test';
+      json(res, { ok: true, message: `${quoi} ${delai ? 'envoyé' + (rafale > 1 ? 's' : '') + ' dans ' + delai + ' s' : 'envoyé' + (rafale > 1 ? 's' : '')} : alerte + voiture de police 🚨` + noteTest(true) });
+      return;
+    }
+
+    // Le live simulé : de faux viewers écrivent et offrent des cadeaux (10 min max).
+    if (req.method === 'GET' && url === '/api/test/live') { json(res, simulation.etat()); return; }
+    if (req.method === 'POST' && url === '/api/test/live') {
+      const body = await parseBody(req);
+      if (body.actif) {
+        // Jamais de faux cadeaux mélangés à un vrai live.
+        if (tiktokStatus.connected) {
+          json(res, { ok: false, message: 'Tu es en live : le live simulé est bloqué pour ne pas mélanger de faux cadeaux au vrai live.', ...simulation.etat() }, 409);
+          return;
+        }
+        simulation.demarrer();
+        json(res, { ok: true, message: 'Live simulé lancé (10 min max) 🧪' + noteTest(true), ...simulation.etat() });
+      } else {
+        simulation.arreter('arrêté depuis le setup');
+        json(res, { ok: true, message: 'Live simulé arrêté.', ...simulation.etat() });
+      }
       return;
     }
 
@@ -621,6 +689,8 @@ function setTikTokStatus(connected, reason = '') {
   );
   tiktokStatus = { connected, username: TIKTOK_USERNAME, reason, sessionExpired: expired };
   broadcast({ type: 'tiktok_status', ...tiktokStatus });
+  // Le vrai live arrive : plus un seul faux cadeau à partir de maintenant.
+  if (connected && simulation.etat().actif) simulation.arreter('ton vrai live TikTok vient de se connecter');
   if (expired) console.error('\n🔑 SESSION EXPIRÉE — Reconfigurer sur http://localhost:' + PORT + '/setup\n');
 }
 

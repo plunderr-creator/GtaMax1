@@ -109,13 +109,32 @@ test('don : pont vers le jeu en panne → l\'alerte et le merci passent quand m�
   assert.match(erreurs[0], /pont cassé/);
 });
 
-test('don de test (setup) : alerte + voix + SPAWN_POLICE, roster intact', () => {
+// ── Tester sans live : { test: true } = même chemin, roster intact ────────
+
+test('test : message de chat lu par la voix, roster intact, journal 🧪', () => {
   const b = banc();
-  b.ev.simulerDon();
-  assert.strictEqual(b.ecran[0].type, 'alerte_don');
-  assert.strictEqual(b.jeu[0][0], 'SPAWN_POLICE');
+  b.ev.onChat(chat('testeur', 'salut la police'), { test: true });
+  assert.deepStrictEqual(b.dits, [['testeur', 'salut la police']]);
+  assert.deepStrictEqual(b.viewers, {});
+  assert.strictEqual(b.sauvegardes, 0);
+  assert.ok(b.lignes.some(l => l.startsWith('🧪') && l.includes('salut la police')));
+});
+
+test('test : une commande « ! » passe par le vrai registre', () => {
+  const b = banc();
+  b.ev.onChat(chat('testeur', '!aide'), { test: true });
+  assert.match(b.dits[0][1], /aucune commande/i);
+  assert.deepStrictEqual(b.viewers, {});
+});
+
+test('test : cadeau → alerte + merci + SPAWN_POLICE, roster intact', () => {
+  const b = banc();
+  b.ev.onGift(don('testeur', 'Galaxy', 1000, { repeatCount: 2 }), { test: true });
+  assert.deepStrictEqual(b.ecran, [{ type: 'alerte_don', pseudo: 'Le testeur', cadeau: 'Galaxy', nombre: 2, pieces: 2000 }]);
+  assert.deepStrictEqual(b.jeu, [['SPAWN_POLICE', { donateur: 'testeur', cadeau: 'Galaxy' }]]);
   assert.strictEqual(b.dits.length, 1);
   assert.deepStrictEqual(b.viewers, {});
+  assert.strictEqual(b.sauvegardes, 0);
 });
 
 test('like : agrégé par viewer, journalisé au vidage, roster à jour', () => {

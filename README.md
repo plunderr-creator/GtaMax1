@@ -35,6 +35,23 @@ cocher **« Contrôler l'audio via OBS »** (la voix sort dans la source).
 **Vérifier** : bouton **« Tester un don »** du setup → alerte sur l'overlay,
 merci vocal, voiture de police en jeu (roster non touché).
 
+## Tester sans live
+
+TikTok n'envoie rien hors live. Carte **« 🧪 Tester sans live »** du setup :
+
+- **Message du chat** (pseudo au choix) : lu par la voix, ou commande s'il
+  commence par « ! » (`!aide` répond).
+- **Cadeau** : nom, combo (×1-99), rafale (1-10 d'un coup : on voit l'espacement
+  de 3 s et le plafond de 8 voitures en jeu).
+- **Envoyer dans 5/10/30 s** : le temps de revenir sur GTA avant que ça parte.
+- **Live simulé** : de faux viewers écrivent toutes les 5-10 s et offrent un
+  cadeau toutes les 20-40 s, 10 min au plus. Coupé tout seul (et refusé) si le
+  vrai live TikTok est connecté.
+
+Même chemin qu'en live (voix, commandes, alerte, `SPAWN_POLICE`), mais **rien
+dans le roster**. L'overlay doit être ouvert (OBS ou « Voir l'overlay ») : la
+carte « État » dit combien il y en a.
+
 ## Réglages du plugin
 
 `<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation) :

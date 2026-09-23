@@ -21,7 +21,7 @@ const WebSocket = require('ws');
 
 const APP = path.join(__dirname, '..');
 const FICHIERS = ['server.js', 'tts.js', 'file-tts.js', 'gta-bridge.js', 'commandes-chat.js', 'evenements.js',
-  'persistance.js', 'roster.js', 'package.json', 'config.default.json',
+  'persistance.js', 'roster.js', 'simulation.js', 'package.json', 'config.default.json',
   'overlay.html', 'overlay.js', 'overlay.css', 'setup.html',
   path.join('outils', 'plugin.js'), path.join('outils', 'lire-config.js')];
 
@@ -189,10 +189,85 @@ test('don de test : alerte sur l\'overlay ET SPAWN_POLICE dans la file du jeu', 
     assert.strictEqual(r.code, 200, r.corps);
     const alerte = await attendre(recus, 'alerte_don');
     assert.deepStrictEqual({ pseudo: alerte.pseudo, cadeau: alerte.cadeau, nombre: alerte.nombre },
-      { pseudo: 'Testeur', cadeau: 'Rose', nombre: 1 });
+      { pseudo: 'testeur', cadeau: 'Rose', nombre: 1 });
     const file = fs.readFileSync(path.join(jeu, 'scripts', 'gtamax_queue.txt'), 'utf8');
     assert.match(file, /^SPAWN_POLICE t=\d+ donateur=testeur cadeau=Rose\n$/);
     assert.deepStrictEqual(fs.readdirSync(path.join(jeu, 'scripts')), ['gtamax_queue.txt']);   // aucun .tmp
+  } finally { ws.close(); }
+});
+
+// ── Tester sans live ──────────────────────────────────────────────────────
+
+async function attendreJournal(motif, max = 4000) {
+  const fin = Date.now() + max;
+  while (Date.now() < fin) { if (motif.test(journal)) return; await dors(25); }
+  throw new Error(`rien dans le journal pour ${motif} en ${max} ms :\n${journal.slice(-800)}`);
+}
+const lignesFile = () => {
+  const f = path.join(jeu, 'scripts', 'gtamax_queue.txt');
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean) : [];
+};
+const consommerFile = () => { const l = lignesFile(); try { fs.unlinkSync(path.join(jeu, 'scripts', 'gtamax_queue.txt')); } catch {} return l; };
+
+test('test sans live : message de chat → vrai handler (journal 🧪), message vide refusé', async () => {
+  const r = await requete('POST', '/api/test/chat', { corps: { pseudo: 'Jean Test', message: 'bonjour la police' } });
+  assert.strictEqual(r.code, 200, r.corps);
+  await attendreJournal(/🧪 💬 CHAT   Jean_Test : bonjour la police/);
+  assert.strictEqual((await requete('POST', '/api/test/chat', { corps: { message: '   ' } })).code, 400);
+});
+
+test('test sans live : rafale de 3 → 3 alertes, 3 SPAWN_POLICE, roster intact', async () => {
+  consommerFile();                                   // repartir d'une file vide
+  const { ws, recus } = await ouvrirOverlay();
+  try {
+    await attendre(recus, 'app_config');
+    const r = await requete('POST', '/api/test/don', { corps: { pseudo: 'bob', cadeau: 'Galaxy', nombre: 2, rafale: 3 } });
+    assert.strictEqual(r.code, 200, r.corps);
+    const fin = Date.now() + 4000;
+    while (recus.filter(m => m.type === 'alerte_don').length < 3 && Date.now() < fin) await dors(25);
+    const alertes = recus.filter(m => m.type === 'alerte_don');
+    assert.strictEqual(alertes.length, 3);
+    assert.deepStrictEqual({ p: alertes[0].pseudo, c: alertes[0].cadeau, n: alertes[0].nombre }, { p: 'bob', c: 'Galaxy', n: 2 });
+    const lignes = consommerFile();                  // le plugin prend le 1er fichier…
+    await dors(300);                                 // …le pont écrit les deux autres d'un coup
+    lignes.push(...consommerFile());
+    assert.strictEqual(lignes.filter(l => /^SPAWN_POLICE t=\d+ donateur=bob cadeau=Galaxy$/.test(l)).length, 3, lignes.join('\n'));
+  } finally { ws.close(); }
+  const data = path.join(bac, 'data.json');
+  if (fs.existsSync(data)) assert.deepStrictEqual(JSON.parse(fs.readFileSync(data, 'utf8')).viewers, {});
+});
+
+test('test sans live : le délai est respecté', async () => {
+  const { ws, recus } = await ouvrirOverlay();
+  try {
+    await attendre(recus, 'app_config');
+    await requete('POST', '/api/test/don', { corps: { pseudo: 'retard', delai_s: 1 } });
+    await dors(500);
+    assert.strictEqual(recus.filter(m => m.type === 'alerte_don').length, 0, 'alerte partie avant le délai');
+    const a = await attendre(recus, 'alerte_don', 3000);
+    assert.strictEqual(a.pseudo, 'retard');
+  } finally { ws.close(); consommerFile(); }
+});
+
+test('test sans live : live simulé marche/arrêt, faux viewers dans le journal', async () => {
+  const r = JSON.parse((await requete('POST', '/api/test/live', { corps: { actif: true } })).corps);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.actif, true);
+  const e = JSON.parse((await requete('GET', '/api/test/live')).corps);
+  assert.ok(e.actif && e.resteMs > 0);
+  await attendreJournal(/🧪 💬 CHAT   \S+ : /, 4000);
+  const s = JSON.parse((await requete('POST', '/api/test/live', { corps: { actif: false } })).corps);
+  assert.strictEqual(s.actif, false);
+  consommerFile();
+});
+
+test('overlays connectés comptés (le setup prévient si aucun)', async () => {
+  const { ws } = await ouvrirOverlay();
+  try {
+    const fin = Date.now() + 2000;
+    let n = 0;
+    while (Date.now() < fin) { n = JSON.parse((await requete('GET', '/api/overlay/status')).corps).connectes; if (n >= 1) break; await dors(50); }
+    assert.ok(n >= 1, n + ' overlay(s)');
   } finally { ws.close(); }
 });
 

@@ -73,63 +73,60 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     return false;
   }
 
+  // TESTER SANS LIVE : opts.test = trame fabriquée (setup, live simulé). Même
+  // chemin que le vrai live — voix, commandes, alerte, SPAWN_POLICE — mais le
+  // roster n'est JAMAIS touché : un faux viewer n'a rien à faire dans la table
+  // sur laquelle le gameplay futur se posera. Journal préfixé 🧪.
+  const estTest = (opts) => !!(opts && opts.test);
+
   // ─── CHAT ───────────────────────────────────────────────
   // Message normal → voix. Message « ! » → jamais lu : parseur + registre de
   // commandes (commandes-chat.js), la couture du gameplay viewer.
-  function onChat(data) {
+  function onChat(data, opts) {
+    const test = estTest(opts), tag = test ? '🧪 ' : '';
     if (dejaVu(data && data.common && data.common.msgId)) return;
     const { pseudo } = extraireUtilisateur(data);
     const msg = String((data && (data.content || data.comment)) || '').trim();
     if (!pseudo || !msg || msg.length > CHAT_MAX_CHARS) return;
-    toucher(pseudo);
+    if (!test) toucher(pseudo);
     if (!msg.startsWith('!')) {
-      log.log(`💬 CHAT   ${pseudo} : ${msg}`);
+      log.log(`${tag}💬 CHAT   ${pseudo} : ${msg}`);
       tts.ajouter(pseudo, msg);
       return;
     }
     const cmd = parserCommande(msg, pseudo);
-    if (!cmd) { log.log(`💬 CHAT   ${pseudo} : ${msg} (commence par « ! » : non lu)`); return; }
+    if (!cmd) { log.log(`${tag}💬 CHAT   ${pseudo} : ${msg} (commence par « ! » : non lu)`); return; }
     routerCommande(cmd, ctxCommande);
   }
 
   // ─── CADEAU ─────────────────────────────────────────────
   // Une voiture de police par cadeau. Une série (combo de roses) compte UNE
   // fois, à sa fin (repeatEnd), avec son total — comme Final Max.
-  function onGift(data) {
+  function onGift(data, opts) {
+    const test = estTest(opts), tag = test ? '🧪 ' : '';
     const { pseudo, nom } = extraireUtilisateur(data);
     if (!pseudo) return;
     const g = (data && data.gift) || {}, gd = (data && data.giftDetails) || {};
     const cadeau   = String(g.name || gd.giftName || data.giftName || 'Cadeau').slice(0, 50);
     const diamants = Math.max(0, parseInt(g.diamondCount ?? gd.diamondCount ?? data.diamondCount ?? 0, 10) || 0);
     const nombre   = Math.max(1, parseInt(data.repeatCount, 10) || 1);
-    toucher(pseudo);                                                  // série en cours = le viewer est là
+    if (!test) toucher(pseudo);                                       // série en cours = le viewer est là
     if (data.repeatEnd === 0 || data.repeatEnd === false) return;    // série en cours → on attend la fin
     const pieces = diamants * nombre;
-    log.log(`🎁 DON    ${pseudo} → ${cadeau} ×${nombre} (${pieces} pièce${pieces > 1 ? 's' : ''})`);
-    roster.ajouterDon(viewers(), pseudo, pieces, maintenant());
-    sauver();
-    effetsDuDon(pseudo, nom, cadeau, nombre, pieces);
-  }
-
-  // Ce que VOIT et ENTEND le live pour un cadeau : alerte, merci, voiture.
-  // Partagé par le vrai cadeau et le bouton « Tester un don » du setup.
-  function effetsDuDon(pseudo, nom, cadeau, nombre, pieces) {
+    log.log(`${tag}🎁 DON    ${pseudo} → ${cadeau} ×${nombre} (${pieces} pièce${pieces > 1 ? 's' : ''})`);
+    if (!test) {
+      roster.ajouterDon(viewers(), pseudo, pieces, maintenant());
+      sauver();
+    }
+    // Ce que VOIT et ENTEND le live : alerte, merci vocal nominatif (repris de
+    // Final Max : le donateur veut être entendu), voiture de police en jeu.
     broadcast({ type: 'alerte_don', pseudo: nom, cadeau, nombre, pieces });
-    // Merci vocal nominatif (repris de Final Max : le donateur veut être entendu).
     tts.ajouter('', 'Merci ' + pseudo + ' pour ' + cadeau + (nombre > 1 ? ' fois ' + nombre : '') + ' !');
     try {
       envoyerCommande('SPAWN_POLICE', { donateur: pseudo, cadeau });
     } catch (e) {
       log.error(`❌ SPAWN_POLICE non envoyée (${pseudo}) : ${(e && e.message) || e}`);
     }
-  }
-
-  // Bouton « Tester un don » : toute la chaîne visible (alerte, voix, voiture en
-  // jeu) SANS toucher au roster — un faux donateur n'a rien à faire dans la
-  // table sur laquelle le gameplay futur se posera.
-  function simulerDon() {
-    log.log('🧪 DON DE TEST → alerte + voix + SPAWN_POLICE (roster non touché)');
-    effetsDuDon('testeur', 'Testeur', 'Rose', 1, 1);
   }
 
   // ─── LIKES ──────────────────────────────────────────────
@@ -172,7 +169,7 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     log.log(`📣 SHARE  ${pseudo}`);
   }
 
-  return { onChat, onGift, onLike, onFollow, onShare, viderLikes, simulerDon };
+  return { onChat, onGift, onLike, onFollow, onShare, viderLikes };
 }
 
 module.exports = { creerEvenements, extraireUtilisateur, nomAffichable };

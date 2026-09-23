@@ -53,6 +53,8 @@ input[type="text"], input[type="number"], input[type="password"], select {
 input:focus, select:focus { border-color: var(--bleu); }
 input[type="range"] { width: 100%; accent-color: var(--bleu); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; }
+.separateur { border-top: 1px solid var(--border); margin: 20px 0 16px; }
 .check-label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .check-label input { width: 16px; height: 16px; accent-color: var(--bleu); }
 .input-with-toggle { display: flex; gap: 8px; }
@@ -69,7 +71,7 @@ code { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px;
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
 .btn {
   border: none; border-radius: 7px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
-  background: var(--bleu); color: #fff; transition: filter .15s;
+  background: var(--bleu); color: #fff; transition: filter .15s; white-space: nowrap;
 }
 .btn:hover { filter: brightness(1.12); }
 .btn.secondaire { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); }
@@ -98,7 +100,7 @@ a { color: var(--bleu-l); }
 #toast.error   { border-color: rgba(255,123,114,0.5); }
 
 @media (max-width: 640px) {
-  .grid2 { grid-template-columns: 1fr; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
   .header { padding: 14px 16px; }
   .main { padding: 20px 16px 48px; }
   .statut-ligne .k { width: 120px; }
@@ -126,6 +128,7 @@ a { color: var(--bleu-l); }
     <div class="card-desc">Mis à jour toutes les 3 secondes.</div>
     <div class="statut">
       <div class="statut-ligne"><span class="k">Live TikTok</span><span id="st-tiktok">…</span></div>
+      <div class="statut-ligne"><span class="k">Overlay</span><span id="st-overlay">…</span></div>
       <div class="statut-ligne"><span class="k">Dossier GTA V</span><span id="st-dossier">…</span></div>
       <div class="statut-ligne"><span class="k">ScriptHookVDotNet</span><span id="st-shvdn">…</span></div>
       <div class="statut-ligne"><span class="k">Plugin GTAMax</span><span id="st-plugin">…</span></div>
@@ -135,6 +138,60 @@ a { color: var(--bleu-l); }
       <button class="btn alerte" onclick="testerDon()">🚨 Tester un don</button>
       <span class="note" style="margin:0">Alerte sur l'overlay + merci vocal + une voiture de police en jeu. Le roster n'est pas touché.</span>
     </div>
+  </div>
+
+  <!-- ── TESTER SANS LIVE ── -->
+  <div class="card">
+    <div class="card-title">🧪 Tester sans live</div>
+    <div class="card-desc">TikTok n'envoie rien hors live : ici, on fabrique des messages et des cadeaux qui suivent exactement le même chemin qu'en live (voix, commandes « ! », alerte, voiture de police en jeu). Rien n'est enregistré dans le roster. L'overlay doit être ouvert (OBS ou « Voir l'overlay ») pour entendre la voix et voir l'alerte.</div>
+    <div class="grid2">
+      <div class="field">
+        <label class="label" for="test-pseudo">Pseudo du faux viewer</label>
+        <input type="text" id="test-pseudo" value="testeur" maxlength="30" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label class="label" for="test-delai">Envoyer <span class="label-hint">un délai laisse le temps de revenir sur GTA</span></label>
+        <select id="test-delai">
+          <option value="0">tout de suite</option>
+          <option value="5">dans 5 s</option>
+          <option value="10">dans 10 s</option>
+          <option value="30">dans 30 s</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label" for="test-message">Message du chat <span class="label-hint">commence par « ! » pour une commande (ex. !aide)</span></label>
+      <div class="input-with-toggle">
+        <input type="text" id="test-message" value="salut, la police arrive ?" maxlength="300" autocomplete="off">
+        <button class="btn" onclick="testerChat()">💬 Envoyer</button>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="field">
+        <label class="label" for="test-cadeau">Cadeau</label>
+        <select id="test-cadeau">
+          <option>Rose</option><option>Perfume</option><option>Hand Hearts</option><option>Galaxy</option><option>TikTok Universe</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="test-nombre">Combo <span class="label-hint">×</span></label>
+        <input type="number" id="test-nombre" min="1" max="99" value="1">
+      </div>
+      <div class="field">
+        <label class="label" for="test-rafale">Rafale <span class="label-hint">d'un coup</span></label>
+        <input type="number" id="test-rafale" min="1" max="10" value="1">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn alerte" onclick="testerCadeau()">🎁 Envoyer le cadeau</button>
+      <span class="note" style="margin:0">Rafale de 3 : trois alertes à la suite, trois voitures espacées de 3 s en jeu.</span>
+    </div>
+    <div class="separateur"></div>
+    <div class="btn-row" style="margin-top:0">
+      <button class="btn secondaire" id="btn-live" onclick="basculerLive()">▶️ Lancer un live simulé</button>
+      <span id="etat-live" class="note" style="margin:0"></span>
+    </div>
+    <div class="note">De faux viewers écrivent toutes les 5-10 s (dont un « !aide » de temps en temps) et offrent un cadeau toutes les 20-40 s, pendant 10 min au plus. Coupé tout seul si ton vrai live se connecte.</div>
   </div>
 
   <!-- ── TIKTOK ── -->
@@ -309,13 +366,18 @@ function setOption(id, val) {
 
 async function rafraichirEtat() {
   try {
-    const [st, g] = await Promise.all([
+    const [st, g, ov, live] = await Promise.all([
       fetch('/api/tiktok/status').then(r => r.json()),
       fetch('/api/gta/status').then(r => r.json()),
+      fetch('/api/overlay/status').then(r => r.json()),
+      fetch('/api/test/live').then(r => r.json()),
     ]);
     poser('st-tiktok', st.connected ? ['ok', '✅ Connecté à @' + st.username]
       : st.sessionExpired ? ['nok', '❌ Session expirée — recolle ton code sessionid']
       : ['att', '⏳ Non connecté' + (st.reason ? ' — ' + st.reason : '')]);
+    poser('st-overlay', ov.connectes > 0 ? ['ok', '✅ ' + ov.connectes + ' ouvert' + (ov.connectes > 1 ? 's' : '')]
+      : ['nok', '❌ Aucun — ouvre OBS ou « Voir l\'overlay » (sinon ni voix ni alerte)']);
+    afficherLive(live);
     poser('st-dossier', g.dossierOk ? ['ok', '✅ ' + g.dossier] : ['nok', '❌ GTA5.exe introuvable dans ' + g.dossier]);
     poser('st-shvdn', g.shvdn ? ['ok', '✅ Installé'] : ['nok', '❌ Absent — voir README (ScriptHookVDotNet v3)']);
     poser('st-plugin', g.plugin === 'a_jour' ? ['ok', '✅ Installé et à jour']
@@ -423,6 +485,61 @@ async function testerDon() {
     setTimeout(rafraichirEtat, 300);
   } catch (e) { showToast('Erreur réseau : ' + e.message, 'error'); }
 }
+
+// ── TESTER SANS LIVE ───────────────────────────────────
+// Les trames fabriquées passent par les vrais handlers côté serveur (voix,
+// commandes, alerte, SPAWN_POLICE) sans jamais toucher au roster.
+function delaiTest() { return parseInt(document.getElementById('test-delai').value, 10) || 0; }
+function pseudoTest() { return document.getElementById('test-pseudo').value.trim() || 'testeur'; }
+function entierChamp(id, min, max) {
+  const n = parseInt(document.getElementById(id).value, 10);
+  return Math.min(max, Math.max(min, Number.isFinite(n) ? n : min));
+}
+
+async function posterTest(url, corps) {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
+    const data = await res.json();
+    showToast(data.message, data.ok ? 'success' : 'error');
+    return data;
+  } catch (e) {
+    showToast('Erreur réseau : ' + e.message, 'error');
+    return null;
+  }
+}
+
+async function testerChat() {
+  const message = document.getElementById('test-message').value.trim();
+  if (!message) { showToast('Écris un message', 'error'); return; }
+  await posterTest('/api/test/chat', { pseudo: pseudoTest(), message, delai_s: delaiTest() });
+}
+
+async function testerCadeau() {
+  await posterTest('/api/test/don', {
+    pseudo:  pseudoTest(),
+    cadeau:  document.getElementById('test-cadeau').value,
+    nombre:  entierChamp('test-nombre', 1, 99),
+    rafale:  entierChamp('test-rafale', 1, 10),
+    delai_s: delaiTest(),
+  });
+  setTimeout(rafraichirEtat, 300);
+}
+
+let _liveActif = false;
+function afficherLive(e) {
+  if (!e) return;
+  _liveActif = !!e.actif;
+  document.getElementById('btn-live').textContent = _liveActif ? '⏹️ Arrêter le live simulé' : '▶️ Lancer un live simulé';
+  document.getElementById('etat-live').textContent = _liveActif
+    ? '🧪 En cours — encore ' + Math.max(1, Math.ceil((e.resteMs || 0) / 60000)) + ' min au plus'
+    : '';
+}
+async function basculerLive() {
+  const d = await posterTest('/api/test/live', { actif: !_liveActif });
+  if (d) afficherLive(d);
+}
+
+document.getElementById('test-message').addEventListener('keydown', e => { if (e.key === 'Enter') testerChat(); });
 
 function copierUrl() {
   const i = document.getElementById('url-overlay');

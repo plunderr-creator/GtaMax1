@@ -1,4 +1,4 @@
-/* Tests du PLUGIN C# (scripts/GTAMax.cs) sous node --test.
+/* Tests du PLUGIN C# (scripts/GTAMax.cs + scripts/Survie.cs) sous node --test.
    Runner : node --test. Lancer depuis app/ : npm test
 
    COMMENT
@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { trouverCsc, compiler, empreinte, SOURCE } = require('../outils/plugin.js');
+const { trouverCsc, compiler, empreinte, SOURCES } = require('../outils/plugin.js');
 const { lireConfig } = require('../outils/lire-config.js');
 const { creerPont } = require('../gta-bridge.js');
 
@@ -34,7 +34,7 @@ let exe = null;
 function harnais() {
   if (exe) return exe;
   const sortie = tmp('tests-plugin') + '.exe';
-  const c = compiler({ sources: [SOURCE, HARNAIS], sortie, defines: ['TESTS_SANS_JEU'], cible: 'exe' });
+  const c = compiler({ sources: [...SOURCES, HARNAIS], sortie, defines: ['TESTS_SANS_JEU'], cible: 'exe' });
   assert.ok(c.ok, 'compilation du harnais :\n' + c.sortie);
   exe = sortie;
   return exe;
@@ -90,7 +90,7 @@ test('plugin C# : compile contre le vrai ScriptHookVDotNet3.dll', {
 }, (t) => {
   const dll = tmp('plugin') + '.dll';
   try {
-    const c = compiler({ sources: [SOURCE], sortie: dll, references: [SHVDN3] });
+    const c = compiler({ sources: SOURCES, sortie: dll, references: [SHVDN3] });
     assert.ok(c.ok, 'compilation du plugin :\n' + c.sortie);
     // Un avertissement « obsolète » après une mise à jour de SHVDN n'est pas une
     // panne : il est affiché, pas bloquant. À traiter à la prochaine retouche.

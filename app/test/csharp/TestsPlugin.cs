@@ -188,13 +188,15 @@ static class TestsPlugin
         Verifier("plantée : au contact après une percussion, non", !Regles.EstPlantee(0f, 5f, 2f, 12f), "plantée");
         Verifier("plantée : elle roule, non", !Regles.EstPlantee(15f, 40f, 2f, 12f), "plantée");
 
-        // Mode : étoiles par défaut, voitures, ou les deux.
-        bool me, mv;
-        Regles.Mode("etoiles", out me, out mv);  Verifier("mode etoiles", me && !mv, me + "/" + mv);
-        Regles.Mode("Étoiles ", out me, out mv); Verifier("mode Étoiles (accent, casse, espace)", me && !mv, me + "/" + mv);
-        Regles.Mode("voitures", out me, out mv); Verifier("mode voitures", !me && mv, me + "/" + mv);
-        Regles.Mode("les-deux", out me, out mv); Verifier("mode les-deux", me && mv, me + "/" + mv);
-        Regles.Mode("n'importe", out me, out mv); Verifier("mode inconnu → étoiles", me && !mv, me + "/" + mv);
+        // Mode : survie par défaut, étoiles, voitures, ou les deux.
+        Verifier("mode survie", Regles.LireMode("survie") == ModeJeu.Survie, Regles.LireMode("survie").ToString());
+        Verifier("mode Survie (casse, espace)", Regles.LireMode(" Survie ") == ModeJeu.Survie, Regles.LireMode(" Survie ").ToString());
+        Verifier("mode etoiles", Regles.LireMode("etoiles") == ModeJeu.Etoiles, Regles.LireMode("etoiles").ToString());
+        Verifier("mode Étoiles (accent, casse, espace)", Regles.LireMode("Étoiles ") == ModeJeu.Etoiles, Regles.LireMode("Étoiles ").ToString());
+        Verifier("mode voitures", Regles.LireMode("voitures") == ModeJeu.Voitures, Regles.LireMode("voitures").ToString());
+        Verifier("mode les-deux", Regles.LireMode("les-deux") == ModeJeu.LesDeux, Regles.LireMode("les-deux").ToString());
+        Verifier("mode inconnu ou absent → survie", Regles.LireMode("n'importe") == ModeJeu.Survie && Regles.LireMode(null) == ModeJeu.Survie,
+            Regles.LireMode("n'importe").ToString());
 
         // Étoiles : +1 par cadeau, plafond, jamais à la baisse.
         Verifier("étoiles : 0 → 1", Regles.EtoilesVisees(0, 0, 1, 3) == 1, Regles.EtoilesVisees(0, 0, 1, 3).ToString());
@@ -221,6 +223,100 @@ static class TestsPlugin
         Verifier("semée : à 150 m mais visible, non", !Regles.EstSemee(150f, true, 120f), "semée");
         Verifier("semée : à 60 m hors écran, non", !Regles.EstSemee(60f, false, 120f), "semée");
 
+        TestsSurvie();
+
         return echecs == 0 ? 0 : 1;
+    }
+
+    // ── Mode survie (façon Driver 2) ──────────────────────────────────────
+    static void TestsSurvie()
+    {
+        // La poursuite : la chaleur (le « felony » de Driver 2) monte d'un cran par cadeau.
+        var p = new Poursuite(4, 60000, 5);
+        Verifier("poursuite : inactive au départ, 0 flic", !p.Active && p.FlicsVoulus == 0, p.FlicsVoulus.ToString());
+        Verifier("poursuite : 1er cadeau = début, 1 flic", p.Cadeau(1000) && p.Active && p.FlicsVoulus == 1 && p.DebutA == 1000, p.FlicsVoulus.ToString());
+        Verifier("poursuite : 2e cadeau = même poursuite, 2 flics", !p.Cadeau(5000) && p.FlicsVoulus == 2 && p.DebutA == 1000, p.FlicsVoulus.ToString());
+        for (int i = 0; i < 10; i++) p.Cadeau(6000);
+        Verifier("poursuite : 4 flics au plus (Driver 2 : 4)", p.FlicsVoulus == 4, p.FlicsVoulus.ToString());
+        Verifier("poursuite : chaleur plafonnée à 5", p.Chaleur == 5, p.Chaleur.ToString());
+        Verifier("poursuite : dure 60 s après le DERNIER cadeau", !p.Expiree(65999) && p.Expiree(66000), p.FinA.ToString());
+        Verifier("poursuite : durée comptée depuis le 1er cadeau", p.DureeMs(66000) == 65000, p.DureeMs(66000).ToString());
+        Verifier("poursuite : plus de chaleur = rattrapage plus fort",
+            new Poursuite(4, 60000, 5).FacteurRattrapage < p.FacteurRattrapage && Math.Abs(p.FacteurRattrapage - 1.2f) < 1e-4, p.FacteurRattrapage.ToString());
+        p.Terminer();
+        Verifier("poursuite : terminée → 0 flic, chaleur à 0", !p.Active && p.FlicsVoulus == 0 && p.Chaleur == 0, p.Chaleur.ToString());
+        Verifier("poursuite : un cadeau après la fin en relance une neuve", p.Cadeau(100000) && p.DebutA == 100000 && p.FlicsVoulus == 1, p.DebutA.ToString());
+
+        // Où faire apparaître : jamais sous les yeux du joueur.
+        float[] premiers = ReglesSurvie.AnglesCandidats(0, true);
+        Verifier("apparition : un nouveau flic arrive d'abord par derrière", Math.Abs(Math.Abs(premiers[0]) - 180f) < 1f, premiers[0].ToString());
+        bool jamaisDevant = true;
+        foreach (float a in premiers) if (Math.Abs(a) < 90f) jamaisDevant = false;
+        Verifier("apparition : un nouveau flic ne vient jamais de devant", jamaisDevant, string.Join(",", Array.ConvertAll(premiers, x => x.ToString())));
+        float[] r0 = ReglesSurvie.AnglesCandidats(0, false), r1 = ReglesSurvie.AnglesCandidats(1, false);
+        var directions = new HashSet<int>();
+        foreach (float a in r0) directions.Add((int)Math.Round(((a % 360f) + 360f) % 360f));
+        Verifier("recyclage : 8 directions, tout le tour (Driver 2 : tout le cercle)", r0.Length == 8 && directions.Count == 8,
+            string.Join(",", Array.ConvertAll(r0, x => x.ToString())));
+        Verifier("recyclage : la direction de départ change d'un flic à l'autre", Math.Abs(r0[0] - r1[0]) > 1f, r0[0] + " / " + r1[0]);
+        Verifier("secteur : derrière, sur le côté, devant",
+            ReglesSurvie.Secteur(180f) == "derrière" && ReglesSurvie.Secteur(-150f) == "derrière" && ReglesSurvie.Secteur(90f) == "sur le côté"
+            && ReglesSurvie.Secteur(-60f) == "sur le côté" && ReglesSurvie.Secteur(10f) == "devant",
+            ReglesSurvie.Secteur(180f) + "/" + ReglesSurvie.Secteur(90f) + "/" + ReglesSurvie.Secteur(10f));
+        Verifier("apparition : 80 m pour un rayon de 80 m", ReglesSurvie.DistanceDApparitionOk(80f, 2f, 80f), "refusé");
+        Verifier("apparition : trop près (30 m), refusé", !ReglesSurvie.DistanceDApparitionOk(30f, 0f, 80f), "accepté");
+        Verifier("apparition : trop loin (200 m), refusé", !ReglesSurvie.DistanceDApparitionOk(200f, 0f, 80f), "accepté");
+        Verifier("apparition : 15 m plus bas (sous un pont), refusé", !ReglesSurvie.DistanceDApparitionOk(80f, -15f, 80f), "accepté");
+
+        // Champ de la caméra : lacet 0 = elle regarde le nord (+Y), lacet 90 = l'ouest.
+        Verifier("caméra : droit devant, dans le champ", ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 0f, 0f, 80f, 0f, 60f), "hors champ");
+        Verifier("caméra : derrière, hors champ", !ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 0f, 0f, -80f, 0f, 60f), "dans le champ");
+        Verifier("caméra : pile sur le côté, hors champ", !ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 0f, 80f, 0f, 0f, 60f), "dans le champ");
+        Verifier("caméra : tournée à l'ouest, l'ouest est dans le champ", ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 90f, -80f, 0f, 0f, 60f), "hors champ");
+        Verifier("caméra : tournée à l'ouest, le nord est hors champ", !ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 90f, 0f, 80f, 0f, 60f), "dans le champ");
+
+        // Recycler un flic (le « ping out / ping in » de Driver 2) : jamais sous ses yeux.
+        Verifier("recyclage : jamais à la vue du joueur", ReglesSurvie.RaisonDeRecycler(true, 500f, 99999, true, 150f, 2500) == null, "recyclé");
+        Verifier("recyclage : semé à 160 m hors champ", ReglesSurvie.RaisonDeRecycler(false, 160f, 0, false, 150f, 2500) == "semé",
+            ReglesSurvie.RaisonDeRecycler(false, 160f, 0, false, 150f, 2500));
+        Verifier("recyclage : planté 2,5 s hors champ", ReglesSurvie.RaisonDeRecycler(false, 60f, 2500, false, 150f, 2500) == "planté",
+            ReglesSurvie.RaisonDeRecycler(false, 60f, 2500, false, 150f, 2500));
+        Verifier("recyclage : retourné ou à l'eau hors champ", ReglesSurvie.RaisonDeRecycler(false, 20f, 0, true, 150f, 2500) == "retourné ou à l'eau",
+            ReglesSurvie.RaisonDeRecycler(false, 20f, 0, true, 150f, 2500));
+        Verifier("recyclage : en pleine chasse, non", ReglesSurvie.RaisonDeRecycler(false, 60f, 1000, false, 150f, 2500) == null, "recyclé");
+
+        // Conduite au contact (le « batter » de Driver 2) : r = joueur - flic, w = vitesse joueur - vitesse flic.
+        float t = ReglesSurvie.TempsDInterception(-2f, 30f, 0f, -10f, 1f, 2f);
+        Verifier("interception : 30 m d'écart, 10 m/s de plus → plafonnée à 2 s", Math.Abs(t - 2f) < 1e-4, t + " s");
+        t = ReglesSurvie.TempsDInterception(0f, 20f, 0f, -20f, 1f, 2f);
+        Verifier("interception : 20 m d'écart, 20 m/s de plus → 1 s", Math.Abs(t - 1f) < 1e-4, t + " s");
+        t = ReglesSurvie.TempsDInterception(0f, 20f, 0f, 5f, 0.7f, 2f);
+        Verifier("interception : il ne se rapproche pas → anticipation de secours", Math.Abs(t - 0.7f) < 1e-4, t + " s");
+        float vx, vy;
+        // Joueur à l'origine vers le nord à 30 m/s, sa droite = +X ; flic 30 m derrière, un peu à droite.
+        ReglesSurvie.PointVise(0f, 0f, 0f, 30f, 2f, -30f, 1f, 1f, 0f, 1.5f, 20f, out vx, out vy);
+        Verifier("visée : sur le flanc droit, côté du flic (percussion par le côté)", vx > 0.5f, vx + " ; " + vy);
+        Verifier("visée : au-delà du joueur (il ne freine pas en arrivant)", vy > 45f, vx + " ; " + vy);
+        ReglesSurvie.PointVise(0f, 0f, 0f, 30f, -3f, -30f, 1f, 1f, 0f, 1.5f, 20f, out vx, out vy);
+        Verifier("visée : flic à gauche → flanc gauche", vx < -0.5f, vx + " ; " + vy);
+
+        // Rattrapage invisible (la puissance « auto » de Driver 2), seulement hors champ.
+        Verifier("rattrapage : plus lent que le joueur → 10 % + 3 m/s plus vite que lui", Math.Abs(ReglesSurvie.VitesseRattrapage(30f, 20f, 1.1f, 65f) - 36f) < 1e-3,
+            ReglesSurvie.VitesseRattrapage(30f, 20f, 1.1f, 65f).ToString());
+        Verifier("rattrapage : déjà plus rapide → rien", ReglesSurvie.VitesseRattrapage(30f, 40f, 1.1f, 65f) == 0f,
+            ReglesSurvie.VitesseRattrapage(30f, 40f, 1.1f, 65f).ToString());
+        Verifier("rattrapage : joueur arrêté → 20 m/s pour arriver vite", ReglesSurvie.VitesseRattrapage(0f, 5f, 1.1f, 65f) == 20f,
+            ReglesSurvie.VitesseRattrapage(0f, 5f, 1.1f, 65f).ToString());
+        Verifier("rattrapage : plafonné", ReglesSurvie.VitesseRattrapage(70f, 10f, 1.2f, 65f) == 65f,
+            ReglesSurvie.VitesseRattrapage(70f, 10f, 1.2f, 65f).ToString());
+
+        // Textes affichés en jeu.
+        Verifier("durée : 45 s", ReglesSurvie.Duree(45400) == "45 s", ReglesSurvie.Duree(45400));
+        Verifier("durée : 2 min 05 s", ReglesSurvie.Duree(125000) == "2 min 05 s", ReglesSurvie.Duree(125000));
+        Verifier("texte en jeu : pseudo sans ~ (codes couleur de GTA)", ReglesSurvie.TexteJeu("~r~bob~s~", 30).IndexOf('~') < 0,
+            ReglesSurvie.TexteJeu("~r~bob~s~", 30));
+        Verifier("texte en jeu : coupé à la longueur max", ReglesSurvie.TexteJeu(new string('a', 50), 20).Length == 20, "");
+        Verifier("texte en jeu : vide ou null → ?", ReglesSurvie.TexteJeu(null, 20) == "?" && ReglesSurvie.TexteJeu(" ~ ", 20) == "?",
+            ReglesSurvie.TexteJeu(" ~ ", 20));
     }
 }

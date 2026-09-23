@@ -1,5 +1,6 @@
 /**
- * outils/plugin.js — compile et installe le plugin jeu (scripts/GTAMax.cs).
+ * outils/plugin.js — compile et installe le plugin jeu (scripts/GTAMax.cs +
+ * scripts/Survie.cs, une seule DLL).
  *
  * Usage : node outils/plugin.js installer   (c'est ce que lance « Installer plugin GTA.bat »)
  *
@@ -23,7 +24,8 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const RACINE     = path.join(__dirname, '..', '..');
-const SOURCE     = path.join(RACINE, 'scripts', 'GTAMax.cs');
+// Le script (GTAMax.cs) et le mode survie (Survie.cs) : compilés ensemble.
+const SOURCES    = ['GTAMax.cs', 'Survie.cs'].map(f => path.join(RACINE, 'scripts', f));
 const INI_MODELE = path.join(RACINE, 'scripts', 'GTAMax.ini');
 
 function trouverCsc() {
@@ -51,9 +53,13 @@ function compiler({ sources, sortie, references = [], defines = [], cible = 'lib
 
 // Fins de ligne normalisées : git (autocrlf) réécrit GTAMax.cs en CRLF au moindre
 // checkout, et le plugin passerait « périmé » sans qu'une ligne de code ait bougé.
-function empreinte(fichier) {
-  const texte = fs.readFileSync(fichier, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n');
-  return crypto.createHash('sha1').update(texte, 'utf8').digest('hex');
+// Un fichier ou une liste (les sources du plugin, dans l'ordre).
+function empreinte(fichiers) {
+  const h = crypto.createHash('sha1');
+  for (const f of [].concat(fichiers)) {
+    h.update(fs.readFileSync(f, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n'), 'utf8');
+  }
+  return h.digest('hex');
 }
 
 // 'absent' | 'a_jour' | 'perime' — lecture seule, appelé par /api/gta/status.
@@ -61,7 +67,7 @@ function etatPlugin(dossierJeu) {
   try {
     if (!fs.existsSync(path.join(dossierJeu, 'scripts', 'GTAMax.dll'))) return 'absent';
     const installee = fs.readFileSync(path.join(dossierJeu, 'scripts', 'GTAMax.version'), 'utf8').trim();
-    return installee === empreinte(SOURCE) ? 'a_jour' : 'perime';
+    return installee === empreinte(SOURCES) ? 'a_jour' : 'perime';
   } catch { return 'perime'; }
 }
 
@@ -76,13 +82,13 @@ function installer(dossierJeu) {
   // Compilé À CÔTÉ puis copié : si GTA V tourne, GTAMax.dll est verrouillée et
   // la copie échoue avec un message clair, sans laisser une DLL à moitié écrite.
   const tmp = path.join(os.tmpdir(), 'gtamax-' + process.pid + '-' + Date.now() + '.dll');
-  const c = compiler({ sources: [SOURCE], sortie: tmp, references: [shvdn3] });
+  const c = compiler({ sources: SOURCES, sortie: tmp, references: [shvdn3] });
   if (!c.ok) return { ok: false, message: 'Compilation échouée :\n' + c.sortie };
   const scripts = path.join(dossierJeu, 'scripts');
   try {
     fs.mkdirSync(scripts, { recursive: true });
     fs.copyFileSync(tmp, path.join(scripts, 'GTAMax.dll'));
-    fs.writeFileSync(path.join(scripts, 'GTAMax.version'), empreinte(SOURCE) + '\n', 'utf8');
+    fs.writeFileSync(path.join(scripts, 'GTAMax.version'), empreinte(SOURCES) + '\n', 'utf8');
   } catch (e) {
     return { ok: false, message: `Copie impossible dans ${scripts} : ${e.message}` + (e.code === 'EBUSY' || e.code === 'EPERM' ? ' — ferme GTA V puis relance.' : '') };
   } finally {
@@ -96,7 +102,7 @@ function installer(dossierJeu) {
   return { ok: true, message: `Plugin installé : ${path.join(scripts, 'GTAMax.dll')}\n${ini}` + (c.sortie ? '\n' + c.sortie : '') };
 }
 
-module.exports = { trouverCsc, compiler, empreinte, etatPlugin, installer, SOURCE };
+module.exports = { trouverCsc, compiler, empreinte, etatPlugin, installer, SOURCES };
 
 if (require.main === module) {
   const cmd = process.argv[2];

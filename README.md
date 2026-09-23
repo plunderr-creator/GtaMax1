@@ -1,8 +1,8 @@
 # GTA Max
 
-Overlay TikTok Live pour GTA V : la voix lit le chat, et chaque cadeau fait
-apparaître derrière toi une voiture de police qui te fonce dessus, avec une
-alerte à l'écran.
+Overlay TikTok Live pour GTA V : la voix lit le chat, et chaque cadeau lâche un
+flic de plus à tes trousses (mode « survie » façon Driver 2), avec une alerte à
+l'écran.
 
 Plomberie reprise de Final Max v0.3.0 (connexion TikTok, voix Edge, overlay,
 réglages, persistance). Spec et plan : `docs/superpowers/`.
@@ -28,14 +28,14 @@ cocher **« Contrôler l'audio via OBS »** (la voix sort dans la source).
 **Côté jeu** (déjà fait le 2026-09-23) :
 - ScriptHookVDotNet v3 **nightly** (v3.7.0-nightly.190, obligatoire pour le jeu
   en build 3889) à la racine du jeu. Console SHVDN sur **F8** (F4 = TrainerV).
-- **`Installer plugin GTA.bat`** : compile `scripts\GTAMax.cs` en
-  `<GTA V>\scripts\GTAMax.dll` et dépose `GTAMax.ini`. À relancer après toute
-  modification de `GTAMax.cs` (le setup dit « pas à jour » sinon). Jeu ouvert :
+- **`Installer plugin GTA.bat`** : compile `scripts\GTAMax.cs` + `scripts\Survie.cs`
+  en `<GTA V>\scripts\GTAMax.dll` et dépose `GTAMax.ini`. À relancer après toute
+  modification de ces fichiers (le setup dit « pas à jour » sinon). Jeu ouvert :
   SHVDN travaille sur une copie de la DLL, l'installation passe ; ensuite **F8**,
   `Reload()`.
 
 **Vérifier** : bouton **« Tester un don »** du setup → alerte sur l'overlay,
-merci vocal, voiture de police en jeu (roster non touché).
+merci vocal, police en jeu (roster non touché).
 
 ## Tester sans live
 
@@ -43,8 +43,8 @@ TikTok n'envoie rien hors live. Carte **« 🧪 Tester sans live »** du setup :
 
 - **Message du chat** (pseudo au choix) : lu par la voix, ou commande s'il
   commence par « ! » (`!aide` répond).
-- **Cadeau** : nom, combo (×1-99), rafale (1-10 d'un coup : on voit l'espacement
-  de 3 s et le plafond de 8 voitures en jeu).
+- **Cadeau** : nom, combo (×1-99), rafale (1-10 d'un coup : en survie, un flic
+  de plus toutes les 3 s jusqu'à 4, puis ils accélèrent).
 - **Envoyer dans 5/10/30 s** : le temps de revenir sur GTA avant que ça parte.
 - **Live simulé** : de faux viewers écrivent toutes les 5-10 s et offrent un
   cadeau toutes les 20-40 s, 10 min au plus. Coupé tout seul (et refusé) si le
@@ -58,7 +58,19 @@ carte « État » dit combien il y en a.
 
 `<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation).
 
-**`MODE=etoiles`** (défaut) : chaque cadeau ajoute une étoile de recherche (3
+**`MODE=survie`** (défaut, inspiré du mode Survival de Driver 2) : chaque cadeau
+lâche un flic de plus à tes trousses (4 max ; au-delà, ils accélèrent). Voitures
+Police Nationale **indestructibles** qui visent ton flanc pour te percuter ; elles
+apparaissent toujours sur une route **hors de ta vue** (derrière, sur les côtés,
+ou cachées par un bâtiment), et un flic semé ou planté réapparaît ailleurs, hors
+de vue. Aucune police du jeu pendant la poursuite (pas de tirs, d'hélicos ni de
+renforts). Elle s'arrête 60 s après le dernier cadeau : « Survécu ! » avec ton
+temps et ton record (`<GTA V>\scripts\GTAMax.record`). À pied, un flic arrêté
+près de toi 2 s : « Attrapé ! ». Réglages dans `[SURVIE]` : `MAX_FLICS`,
+`DUREE_S`, `DISTANCE_M`, `INDESTRUCTIBLES`. Design :
+`docs/superpowers/specs/2026-09-23-mode-survie-design.md`.
+
+**`MODE=etoiles`** : chaque cadeau ajoute une étoile de recherche (3
 max) et c'est la vraie police du jeu qui te poursuit — tes voitures Police
 Nationale du `dispatch.meta` —, **sans armes** (elle percute et arrête, ne
 tire jamais) et **sans hélicoptères**. Pendant 45 s après chaque cadeau, elle
@@ -78,7 +90,8 @@ Journal du plugin : `<GTA V>\scripts\GTAMax.log`. Journal du serveur :
 
 ## Ajouter une action en jeu
 
-1. `scripts/GTAMax.cs` : écrire `void MonAction(Commande c)` (arguments :
+1. `scripts/GTAMax.cs` (ou un fichier à part ajouté à `SOURCES` dans
+   `app/outils/plugin.js`, comme `Survie.cs`) : écrire `void MonAction(Commande c)` (arguments :
    `c.Arg("cle")`), puis dans le constructeur
    `registre.Enregistrer("MON_ACTION", MonAction);`.
 2. Côté serveur, l'appeler par le seul pont : `envoyerCommande('MON_ACTION', { cle: 'valeur' })`

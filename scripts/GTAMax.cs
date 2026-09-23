@@ -3,13 +3,14 @@
  *
  * Lit les commandes que le serveur GTA Max dépose dans scripts\gtamax_queue.txt
  * et les exécute en jeu. En v1, une seule action : SPAWN_POLICE (un cadeau
- * TikTok = une voiture de police qui prend le joueur en chasse).
+ * TikTok = la police prend le joueur en chasse ; le MODE de GTAMax.ini dit
+ * comment — par défaut le mode « survie » façon Driver 2, dans Survie.cs).
  *
  * COMPILATION : « Installer plugin GTA.bat » (app/outils/plugin.js) compile ce
- * fichier en scripts\GTAMax.dll avec le csc du .NET Framework 4.8, contre
- * ScriptHookVDotNet3.dll. Ce csc ne connaît que C# 5 : pas de $"", pas de ?.,
- * pas de nameof, pas d'initialiseur de propriété automatique.
- * Les tests (app/test/plugin.test.js) compilent ce même fichier avec
+ * fichier et Survie.cs en scripts\GTAMax.dll avec le csc du .NET Framework 4.8,
+ * contre ScriptHookVDotNet3.dll. Ce csc ne connaît que C# 5 : pas de $"", pas
+ * de ?., pas de nameof, pas d'initialiseur de propriété automatique.
+ * Les tests (app/test/plugin.test.js) compilent ces mêmes fichiers avec
  * /define:TESTS_SANS_JEU : seule la LOGIQUE PURE (en haut) est alors compilée,
  * sans le jeu ni SHVDN.
  *
@@ -284,6 +285,15 @@ namespace GTAMax
         }
     }
 
+    /// <summary>Ce que fait un cadeau (GTAMax.ini, [MODE] MODE).</summary>
+    public enum ModeJeu
+    {
+        Survie,     // façon Driver 2 : une meute de flics du script à semer (Survie.cs)
+        Etoiles,    // étoiles de recherche : la vraie police du jeu, sans tirs ni hélicos
+        Voitures,   // une voiture de police du script par cadeau
+        LesDeux,    // étoiles + voitures
+    }
+
     /// <summary>Petites règles de calcul, sorties du jeu pour être testées.</summary>
     public static class Regles
     {
@@ -332,14 +342,16 @@ namespace GTAMax
             return (avantX * versX + avantY * versY) / (na * nv) >= cosMin;
         }
 
-        // MODE de GTAMax.ini : « etoiles », « voitures » ou « les_deux » (casse,
-        // accents, espaces et tirets ignorés). Inconnu → etoiles, le mode par défaut.
-        public static void Mode(string texte, out bool etoiles, out bool voitures)
+        // MODE de GTAMax.ini : « survie », « etoiles », « voitures » ou « les_deux »
+        // (casse, accents, espaces et tirets ignorés). Inconnu → survie, le défaut.
+        public static ModeJeu LireMode(string texte)
         {
             string m = (texte ?? "").Trim().ToLowerInvariant()
                 .Replace("é", "e").Replace("è", "e").Replace(" ", "_").Replace("-", "_");
-            etoiles = m != "voitures";
-            voitures = m == "voitures" || m == "les_deux";
+            if (m == "etoiles") return ModeJeu.Etoiles;
+            if (m == "voitures") return ModeJeu.Voitures;
+            if (m == "les_deux") return ModeJeu.LesDeux;
+            return ModeJeu.Survie;
         }
 
         // Étoiles visées après un cadeau : on part du plus haut entre le niveau
@@ -487,10 +499,10 @@ namespace GTAMax
         const float DISTANCE_LACHER_M = 250f;      // distancée à plus de 250 m…
         const int LOIN_MS = 15000;                 // …pendant 15 s : la poursuite est perdue, la voiture est lâchée
         const float PLAFOND_DISTANCE_M = 60f;
-        const string PED_POLICE = "s_m_y_cop_01";  // tenue Police Nationale posée sur ce ped
+        internal const string PED_POLICE = "s_m_y_cop_01";  // tenue Police Nationale posée sur ce ped
         const string MODELES_DEFAUT = "pranger";
-        const float VITESSE_TRAQUE = 60f;          // m/s demandés : c'est la voiture qui plafonne
-        const int CONDUITE_NORMALE = 786603;       // voiture rendue au jeu : balade tranquille
+        internal const float VITESSE_TRAQUE = 60f;          // m/s demandés : c'est la voiture qui plafonne
+        internal const int CONDUITE_NORMALE = 786603;       // voiture rendue au jeu : balade tranquille
         const int FLAG_PEUT_TRAVERSER_PARE_BRISE = 32;   // SET_PED_CONFIG_FLAG : coupé, le policier reste au volant après un choc
 
         readonly Journal journal;
@@ -506,6 +518,9 @@ namespace GTAMax
         float distanceM;
         float bonusMoteur;       // % de puissance et de vitesse de pointe en plus (MODIFY_VEHICLE_TOP_SPEED)
         int rattrapagesMax;      // réapparitions derrière le joueur par voiture semée
+
+        // Mode « survie » (défaut) : tout est dans Survie.cs ; null dans les autres modes.
+        Survie survie;
 
         // Mode « étoiles » : un cadeau = une étoile de recherche, la vraie police du jeu.
         bool modeEtoiles, modeVoitures;
@@ -540,14 +555,19 @@ namespace GTAMax
 
         void ChargerReglages()
         {
-            string liste = MODELES_DEFAUT, mode = "etoiles";
+            string liste = MODELES_DEFAUT, mode = "survie";
             int intervalle = 3000, maxVoitures = 8, maxAttente = 20, rattrapages = 3;
             int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0, renfort = 1;
-            float distanceRenforts = 0f;
+            int maxFlics = 4, dureeS = 60, indestructibles = 1;
+            float distanceRenforts = 0f, rayonSurvie = 80f;
             float distance = 20f, bonus = 40f;
             try
             {
                 mode        = Settings.GetValue<string>("MODE", "MODE", mode);
+                maxFlics    = Settings.GetValue<int>("SURVIE", "MAX_FLICS", maxFlics);
+                dureeS      = Settings.GetValue<int>("SURVIE", "DUREE_S", dureeS);
+                rayonSurvie = Settings.GetValue<float>("SURVIE", "DISTANCE_M", rayonSurvie);
+                indestructibles = Settings.GetValue<int>("SURVIE", "INDESTRUCTIBLES", indestructibles);
                 parCadeau   = Settings.GetValue<int>("ETOILES", "PAR_CADEAU", parCadeau);
                 maxEtoiles  = Settings.GetValue<int>("ETOILES", "MAX", maxEtoiles);
                 tenueS      = Settings.GetValue<int>("ETOILES", "TENUE_S", tenueS);
@@ -570,7 +590,24 @@ namespace GTAMax
             distanceM = Regles.Borne(distance, 5f, PLAFOND_DISTANCE_M);
             bonusMoteur = Regles.Borne(bonus, 0f, 200f);
             rattrapagesMax = Regles.Borne(rattrapages, 0, 20);
-            Regles.Mode(mode, out modeEtoiles, out modeVoitures);
+            // Toujours créées (le tick les parcourt) ; vides hors du mode « voitures ».
+            fileSpawn = new FileSpawn<DemandeSpawn>(Regles.Borne(intervalle, 500, 60000), Regles.Borne(maxAttente, 1, 200), AGE_MAX_DEMANDE_MS);
+            parc = new Parc<UnitePolice>(Regles.Borne(maxVoitures, 1, 30));
+
+            ModeJeu modeJeu = Regles.LireMode(mode);
+            modeEtoiles = modeJeu == ModeJeu.Etoiles || modeJeu == ModeJeu.LesDeux;
+            modeVoitures = modeJeu == ModeJeu.Voitures || modeJeu == ModeJeu.LesDeux;
+            if (modeJeu == ModeJeu.Survie)
+            {
+                maxFlics = Regles.Borne(maxFlics, 1, 6);
+                dureeS = Regles.Borne(dureeS, 10, 600);
+                rayonSurvie = Regles.Borne(rayonSurvie, 50f, 200f);
+                survie = new Survie(journal, dossierScripts, GereParEls, modeles, maxFlics, dureeS, rayonSurvie, bonusMoteur, indestructibles != 0);
+                journal.Info("Mode : survie (façon Driver 2) — " + maxFlics + " flics max, 1 de plus par cadeau, poursuite jusqu'à "
+                    + dureeS + " s après le dernier cadeau, apparition à " + rayonSurvie + " m hors de vue, flics "
+                    + (indestructibles != 0 ? "indestructibles" : "destructibles") + ", moteur +" + bonusMoteur + " %, modèles " + string.Join(", ", modeles));
+                return;
+            }
             etoilesParCadeau = Regles.Borne(parCadeau, 1, 5);
             etoilesMax = Regles.Borne(maxEtoiles, 1, 5);
             tenueMs = Regles.Borne(tenueS, 0, 600) * 1000;
@@ -584,8 +621,6 @@ namespace GTAMax
                 + (modeEtoiles ? " — +" + etoilesParCadeau + " étoile(s) par cadeau, " + etoilesMax + " max, tenue " + (tenueMs / 1000)
                     + " s, police " + (tirsAutorises ? "armée" : "SANS armes") + ", hélicos " + (helicosAutorises ? "oui" : "NON")
                     + (distanceRenfortsM > 0f ? ", renforts du jeu à " + distanceRenfortsM + " m (cadence ×4)" : ", dispatch du jeu intact") + (renfortParCadeau ? ", + 1 renfort derrière par cadeau" : "") : ""));
-            fileSpawn = new FileSpawn<DemandeSpawn>(Regles.Borne(intervalle, 500, 60000), Regles.Borne(maxAttente, 1, 200), AGE_MAX_DEMANDE_MS);
-            parc = new Parc<UnitePolice>(Regles.Borne(maxVoitures, 1, 30));
             journal.Info("Réglages : modèles " + string.Join(", ", modeles) + " ; " + distanceM + " m derrière ; 1 voiture / "
                 + Regles.Borne(intervalle, 500, 60000) + " ms ; " + parc.Max + " max ; moteur +" + bonusMoteur + " % ; "
                 + rattrapagesMax + " réapparition(s) si semée");
@@ -617,6 +652,12 @@ namespace GTAMax
                 try { EntretenirEtoiles(); }
                 catch (Exception ex) { journal.ErreurLimitee("etoiles", "Mode étoiles : " + ex); }
             }
+
+            if (survie != null)
+            {
+                try { survie.Tick(); }
+                catch (Exception ex) { journal.ErreurLimitee("survie", "Mode survie : " + ex); }
+            }
         }
 
         // Script déchargé (fermeture du jeu, rechargement SHVDN) : on lâche tout ce
@@ -628,6 +669,7 @@ namespace GTAMax
             {
                 AbandonnerChargement();
                 if (parc != null) foreach (UnitePolice u in parc.Retirer(delegate (UnitePolice x) { return true; })) Lacher(u);
+                if (survie != null) survie.Liberer();
                 if (dispatchModifie)
                 {
                     Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, true);
@@ -654,9 +696,11 @@ namespace GTAMax
 
         // ─── SPAWN_POLICE ─────────────────────────────────────────────────
         // Le serveur ne sait pas COMMENT la police arrive : c'est le MODE de
-        // GTAMax.ini qui décide (étoiles de recherche, voitures du script, ou les deux).
+        // GTAMax.ini qui décide (survie façon Driver 2, étoiles de recherche,
+        // voitures du script, ou étoiles + voitures).
         void SpawnPolice(Commande c)
         {
+            if (survie != null) { survie.Cadeau(c.Arg("donateur"), c.Arg("cadeau")); return; }
             if (modeEtoiles) AjouterEtoiles(c.Arg("donateur"));
             // Mode étoiles seul : la police du jeu arrivait de très loin (test du
             // 2026-09-23). Un renfort apparaît donc derrière le joueur, confié à l'IA du jeu.
@@ -794,7 +838,7 @@ namespace GTAMax
             }
         }
 
-        bool JoueurDisponible()
+        internal static bool JoueurDisponible()
         {
             Ped joueur = Game.Player.Character;
             if (joueur == null || !joueur.Exists() || joueur.IsDead) return false;
@@ -987,7 +1031,7 @@ namespace GTAMax
             catch (Exception) { return false; }
         }
 
-        static void PreparerAgent(Ped p)
+        internal static void PreparerAgent(Ped p)
         {
             if (p == null || !p.Exists()) return;
             p.BlockPermanentEvents = true;                     // ne réagit à rien (tirs, collisions) : ne fuit pas, ne descend pas se battre
@@ -1208,7 +1252,7 @@ namespace GTAMax
             catch (Exception ex) { journal.ErreurLimitee("lacher", "Libération d'une voiture : " + ex.Message); }
         }
 
-        static void LacherAgent(Ped a)
+        internal static void LacherAgent(Ped a)
         {
             if (a == null || !a.Exists()) return;
             a.BlockPermanentEvents = false;

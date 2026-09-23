@@ -473,7 +473,8 @@ namespace GTAMax
         const int EPAVE_MS = 8000;                 // une épave reste visible 8 s puis disparaît
         const int ENTRETIEN_MS = 1000;             // suivi des poursuites et du nettoyage
         const float DISTANCE_LIGNE_DROITE_M = 40f; // plus près que ça, elle fonce en ligne droite sur le joueur
-        const float DISTANCE_COUP_M = 15f;         // plus près que ça, face à lui : coup d'accélérateur pour percuter
+        const float DISTANCE_COUP_M = 15f;
+        const float DISTANCE_COMBAT_RENFORT_M = 60f; // renfort : plus près, l'IA police du jeu prend le relais         // plus près que ça, face à lui : coup d'accélérateur pour percuter
         const float COS_FACE = 0.87f;              // « face au joueur » : à 30° près
         const float ELAN_COUP_MS = 6f;             // le coup d'accélérateur : sa vitesse + 6 m/s (≈ 22 km/h)
         const float DISTANCE_SEMEE_M = 120f;       // plus loin que ça, hors écran…
@@ -868,6 +869,11 @@ namespace GTAMax
             Ped joueur = Game.Player.Character;
             if (joueur == null || !joueur.Exists()) return;
             Vector3 position = PointDApparition(joueur);
+            if (c.Demande.Renfort && !SurRouteDerriere(joueur, position))
+            {
+                journal.Info("Renfort pour " + c.Demande.Donateur + " : pas de route derrière le joueur, pas d'apparition");
+                return;
+            }
             float cap = (joueur.Position - position).ToHeading();   // derrière lui, orientée vers lui : elle fonce dans son dos
             Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
             float vitesseJoueur = vj != null ? vj.Speed : 0f;
@@ -961,6 +967,15 @@ namespace GTAMax
             return new Vector3(cible.X, cible.Y, trouve ? sol.GetResult<float>() : cible.Z);
         }
 
+        static bool SurRouteDerriere(Ped joueur, Vector3 position)
+        {
+            Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
+            Vector3 avant = vj != null ? vj.ForwardVector : joueur.ForwardVector;
+            Vector3 rel = position - joueur.Position;
+            return Function.Call<bool>(Hash.IS_POINT_ON_ROAD, position.X, position.Y, position.Z, 0)
+                && Regles.EstDerriere(rel.X, rel.Y, avant.X, avant.Y);
+        }
+
         bool GereParEls(string modele)
         {
             try
@@ -1007,12 +1022,15 @@ namespace GTAMax
         void DonnerOrdre(UnitePolice u, Ped joueur)
         {
             Ped c = u.Conducteur;
-            if (u.Renfort)
+            // Renfort : loin (> 60 m) et en voiture, notre traque (elle roule vite
+            // droit sur lui) ; près, ou à pied, l'IA de la police du jeu (percussions,
+            // arrestation). Au test, le combat seul conduisait mal de loin.
+            bool auVolantRenfort = c != null && c.Exists() && !c.IsDead && u.Voiture.Exists() && c.IsInVehicle(u.Voiture);
+            if (u.Renfort && (!auVolantRenfort || u.Voiture.Position.DistanceTo(joueur.Position) <= DISTANCE_COMBAT_RENFORT_M))
             {
-                // Combat redonné s'il l'a perdu ; même à pied, il poursuit.
                 if (c != null && c.Exists() && !c.IsDead && !Function.Call<bool>(Hash.IS_PED_IN_COMBAT, c, joueur))
                     Function.Call(Hash.TASK_COMBAT_PED, c, joueur, 0, 16);
-                if (c != null && c.Exists() && !c.IsDead && u.Voiture.Exists() && c.IsInVehicle(u.Voiture)) CoupDAccelerateur(u, joueur);
+                if (auVolantRenfort) CoupDAccelerateur(u, joueur);
                 return;
             }
             if (c == null || !c.Exists() || c.IsDead || !u.Voiture.Exists() || !c.IsInVehicle(u.Voiture)) return;
@@ -1095,7 +1113,7 @@ namespace GTAMax
                 else if (u.ImmobileDepuis == 0) u.ImmobileDepuis = Math.Max(1, maintenant);
                 bool semee = u.SemeeDepuis != 0 && maintenant - u.SemeeDepuis >= SEMEE_MS;
                 bool plantee = !visible && u.ImmobileDepuis != 0 && maintenant - u.ImmobileDepuis >= IMMOBILE_MS;
-                if ((semee || plantee) && u.Rattrapages < rattrapagesMax)
+                if ((semee || plantee) && !u.Renfort && u.Rattrapages < rattrapagesMax)
                 {
                     Rattraper(u, joueur, semee ? "semée" : "plantée hors écran");
                     continue;

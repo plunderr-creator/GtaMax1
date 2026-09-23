@@ -272,22 +272,57 @@ static class TestsPlugin
         // lui, les flics faisaient des face-à-face). Joueur à l'origine vers le nord à
         // 30 m/s, sa droite = +X. La cible court devant le joueur (12 m + 0,5 s).
         float cx, cy, cv;
-        string phase = ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, -4f, -30f, 1f, 0f, out cx, out cy, out cv);
-        Verifier("course : derrière à gauche → il remonte sur SA gauche, plus vite que le joueur",
+        var coureur = RoleFlic.Coureur;
+        string phase = ReglesSurvie.ConsigneCourse(coureur, 0f, 0f, 0f, 30f, -4f, -30f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("coureur : derrière à gauche → il remonte sur SA gauche, plus vite que le joueur",
             phase == "rattrape" && cx < -1f && cy > 20f && Math.Abs(cv - 38f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
-        phase = ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, 4f, 2f, 1f, 0f, out cx, out cy, out cv);
-        Verifier("course : à sa hauteur à droite → il serre vers le joueur, à peine plus vite",
+        phase = ReglesSurvie.ConsigneCourse(coureur, 0f, 0f, 0f, 30f, 4f, 2f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("coureur : à sa hauteur à droite → il serre vers le joueur, à peine plus vite",
             phase == "à sa hauteur" && cx > 0f && cx < 1f && cy > 20f && Math.Abs(cv - 32f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
-        phase = ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, 3f, 20f, 1f, 0f, out cx, out cy, out cv);
-        Verifier("course : devant → il se rabat devant lui, à peine moins vite (lui barre la route)",
+        phase = ReglesSurvie.ConsigneCourse(coureur, 0f, 0f, 0f, 30f, 3f, 20f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("coureur : devant → il se rabat devant lui, à peine moins vite (lui barre la route)",
             phase == "devant" && Math.Abs(cx) < 1e-3 && cy > 40f && Math.Abs(cv - 28f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
+        // Bloqueur : il double sans serrer, puis se rabat devant.
+        phase = ReglesSurvie.ConsigneCourse(RoleFlic.Bloqueur, 0f, 0f, 0f, 30f, 4f, 2f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("bloqueur : à sa hauteur → il double sur son côté sans serrer, plus vite",
+            phase == "double" && cx >= 2f && cv > 32f, phase + " " + cx + ";" + cy + " " + cv);
+        phase = ReglesSurvie.ConsigneCourse(RoleFlic.Bloqueur, 0f, 0f, 0f, 30f, 3f, 20f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("bloqueur : devant → il lui barre la route",
+            phase == "barre la route" && Math.Abs(cx) < 1e-3 && cv < 30f, phase + " " + cx + ";" + cy + " " + cv);
+        // Collant : dans sa voie, derrière, pare-choc contre pare-choc, sans coup de boost.
+        phase = ReglesSurvie.ConsigneCourse(RoleFlic.Collant, 0f, 0f, 0f, 30f, 3f, -10f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("collant : juste derrière → il colle, dans sa voie, à peine plus vite (+1,5 m/s)",
+            phase == "colle" && Math.Abs(cx) < 1e-3 && Math.Abs(cv - 31.5f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
+        phase = ReglesSurvie.ConsigneCourse(RoleFlic.Collant, 0f, 0f, 0f, 30f, 3f, 5f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("collant : à sa hauteur ou devant → il se laisse doubler",
+            phase == "laisse passer" && cx >= 2f && cv < 30f, phase + " " + cx + ";" + cy + " " + cv);
         bool jamaisDemiTour = true;
-        foreach (float l in new[] { -60f, -20f, -8f, 0f, 8f, 15f, 40f })
+        foreach (RoleFlic role in new[] { RoleFlic.Coureur, RoleFlic.Bloqueur, RoleFlic.Collant })
+            foreach (float l in new[] { -60f, -20f, -8f, 0f, 8f, 15f, 40f })
+            {
+                ReglesSurvie.ConsigneCourse(role, 0f, 0f, 0f, 30f, 3f, l, 1f, 0f, out cx, out cy, out cv);
+                if (cy <= l + 5f || cv > 30f + 10f + 1e-3f) jamaisDemiTour = false;
+            }
+        Verifier("course (3 rôles) : cible toujours devant le flic (jamais de demi-tour), jamais plus de 10 m/s au-dessus du joueur",
+            jamaisDemiTour, "");
+        Verifier("rôles : coureur, bloqueur, collant, puis on recommence",
+            ReglesSurvie.RolePour(1) == RoleFlic.Coureur && ReglesSurvie.RolePour(2) == RoleFlic.Bloqueur
+            && ReglesSurvie.RolePour(3) == RoleFlic.Collant && ReglesSurvie.RolePour(4) == RoleFlic.Coureur, "");
+        // Entrées variées (test n°3 : « il faudrait varier ») ; « à côté » reste la plus fréquente.
+        var premieres = new Dictionary<EntreeCourse, int>();
+        for (int tour = 0; tour < 4; tour++)
         {
-            ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, 3f, l, 1f, 0f, out cx, out cy, out cv);
-            if (cy <= l + 5f) jamaisDemiTour = false;
+            EntreeCourse[] ordre = ReglesSurvie.EntreesPourCourse(tour);
+            premieres[ordre[0]] = (premieres.ContainsKey(ordre[0]) ? premieres[ordre[0]] : 0) + 1;
+            if (ordre.Length != 3 || new HashSet<EntreeCourse>(ordre).Count != 3) premieres.Clear();
         }
-        Verifier("course : la cible est toujours devant le flic, dans le sens de la course (jamais de demi-tour)", jamaisDemiTour, "");
+        Verifier("entrées : les trois varient en tête, « à côté » une fois sur deux, chacune toujours essayée",
+            premieres.Count == 3 && premieres[EntreeCourse.ACote] == 2, string.Join(",", new List<EntreeCourse>(premieres.Keys).ConvertAll(e => e.ToString()).ToArray()));
+        // Joueur lent, flic au contact : il approche à sa vitesse + 4 m/s (8 au moins), jamais en charge.
+        Verifier("approche : joueur arrêté → 8 m/s", ReglesSurvie.VitesseApproche(0f) == 8f, ReglesSurvie.VitesseApproche(0f).ToString());
+        Verifier("approche : joueur à 10 m/s → 14 m/s", ReglesSurvie.VitesseApproche(10f) == 14f, ReglesSurvie.VitesseApproche(10f).ToString());
+        Verifier("approche de loin : 15 m/s de plus que le joueur, entre 25 et 60", ReglesSurvie.VitesseDeLoin(0f) == 25f
+            && ReglesSurvie.VitesseDeLoin(30f) == 45f && ReglesSurvie.VitesseDeLoin(60f) == 60f, ReglesSurvie.VitesseDeLoin(30f).ToString());
         // Vitesse de pointe : de quoi suivre la voiture du joueur (+8 %), jamais moins que le réglage.
         Verifier("puissance : supercar à 252 km/h contre 144 km/h → +89 %", Math.Abs(ReglesSurvie.BonusPourSuivre(70f, 40f, 40f, 150f) - 89f) < 0.1f,
             ReglesSurvie.BonusPourSuivre(70f, 40f, 40f, 150f).ToString());

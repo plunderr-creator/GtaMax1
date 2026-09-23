@@ -514,6 +514,7 @@ namespace GTAMax
         FileSpawn<DemandeSpawn> fileSpawn;
         Parc<UnitePolice> parc;
         List<string> modeles;
+        string pedPolice = PED_POLICE;   // [POLICE] PED : le policier au volant
         bool modelesVerifies;
         float distanceM;
         float bonusMoteur;       // % de puissance et de vitesse de pointe en plus (MODIFY_VEHICLE_TOP_SPEED)
@@ -555,7 +556,7 @@ namespace GTAMax
 
         void ChargerReglages()
         {
-            string liste = MODELES_DEFAUT, mode = "survie";
+            string liste = MODELES_DEFAUT, mode = "survie", ped = PED_POLICE;
             int intervalle = 3000, maxVoitures = 8, maxAttente = 20, rattrapages = 3;
             int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0, renfort = 1;
             int maxFlics = 4, dureeS = 60, indestructibles = 1;
@@ -576,6 +577,7 @@ namespace GTAMax
                 renfort     = Settings.GetValue<int>("ETOILES", "RENFORT", renfort);
                 distanceRenforts = Settings.GetValue<float>("ETOILES", "DISTANCE_RENFORTS_M", distanceRenforts);
                 liste       = Settings.GetValue<string>("POLICE", "MODELES", liste);
+                ped         = Settings.GetValue<string>("POLICE", "PED", ped);
                 distance    = Settings.GetValue<float>("POLICE", "DISTANCE_M", distance);
                 intervalle  = Settings.GetValue<int>("POLICE", "INTERVALLE_MS", intervalle);
                 maxVoitures = Settings.GetValue<int>("POLICE", "MAX_VOITURES", maxVoitures);
@@ -587,6 +589,8 @@ namespace GTAMax
 
             modeles = Regles.ListeModeles(liste);
             if (modeles.Count == 0) modeles = Regles.ListeModeles(MODELES_DEFAUT);
+            List<string> peds = Regles.ListeModeles(ped);
+            pedPolice = peds.Count > 0 ? peds[0] : PED_POLICE;
             distanceM = Regles.Borne(distance, 5f, PLAFOND_DISTANCE_M);
             bonusMoteur = Regles.Borne(bonus, 0f, 200f);
             rattrapagesMax = Regles.Borne(rattrapages, 0, 20);
@@ -602,9 +606,10 @@ namespace GTAMax
                 maxFlics = Regles.Borne(maxFlics, 1, 6);
                 dureeS = Regles.Borne(dureeS, 10, 600);
                 rayonSurvie = Regles.Borne(rayonSurvie, 40f, 200f);
-                survie = new Survie(journal, dossierScripts, GereParEls, modeles, maxFlics, dureeS, rayonSurvie, bonusMoteur, indestructibles != 0);
+                survie = new Survie(journal, dossierScripts, GereParEls, modeles, pedPolice, maxFlics, dureeS, rayonSurvie, bonusMoteur, indestructibles != 0);
                 journal.Info("Mode : survie (façon Driver 2) — " + maxFlics + " flics max, 1 de plus par cadeau, poursuite jusqu'à "
-                    + dureeS + " s après le dernier cadeau ; joueur rapide : flics DEVANT sur sa route ; sinon à " + rayonSurvie + " m hors de vue ; flics "
+                    + dureeS + " s après le dernier cadeau ; joueur rapide : la course (entrées à côté / derrière / rue de côté, rôles coureur / bloqueur / collant) ; sinon à "
+                    + rayonSurvie + " m hors de vue ; policier " + pedPolice + " ; flics "
                     + (indestructibles != 0 ? "indestructibles" : "destructibles") + ", moteur +" + bonusMoteur + " %, modèles " + string.Join(", ", modeles));
                 return;
             }
@@ -864,7 +869,7 @@ namespace GTAMax
                 DemandeSpawn demande = fileSpawn.Prendre(maintenant);
                 string nom = modeles[hasard.Next(modeles.Count)];
                 var voiture = new Model(nom);
-                var agent = new Model(PED_POLICE);
+                var agent = new Model(pedPolice);
                 voiture.Request();
                 agent.Request();
                 chargement = new ChargementEnCours { Demande = demande, Nom = nom, Voiture = voiture, Agent = agent, DebutA = maintenant };

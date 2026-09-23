@@ -172,3 +172,32 @@ devant, et fassent la course avec lui.
 - Rattrapage invisible remonté à 250 km/h (toujours aligné, 4 roues au sol).
 - Journal : phase de chaque flic (rattrape / à sa hauteur / devant / percute /
   traque) et bonus moteur dans le résumé.
+
+## Retour du test en jeu n°3 (2026-09-23, 22:11-22:13)
+
+**Journal** : l'entrée « à côté, 15 m derrière » marche (« 16 → 3 m » en 2 s,
+contacts réguliers ; attrapé à pied au bout de 42 s). Mais tous les recyclages
+se ressemblent (« à côté, 15 m derrière » à chaque fois), et joueur lent, le flic
+passait en « percute » : 216 km/h demandés + coup d'accélérateur instantané.
+Le streamer : « les véhicules qui apparaissaient derrière étaient bien, mais il
+faudrait varier et enlever le boost qu'ils peuvent avoir pour te rentrer dedans ».
+
+**Crash** 22:13 : `ERR_MEM_EMBEDDEDALLOC_GUARD_4` (même signature que le 21/09
+avant GTA Max et le 23/09 à 19:57). 2 flics du plugin seulement, 79 voitures
+ambiantes. Piste : les mods de police (voiture `pranger`, tenue `s_m_y_cop_01`,
+posée le 22/09) ou d'autres add-ons ; le dump ne contient pas les noms d'assets.
+
+**Corrections** :
+- **Plus de boost** : coup d'accélérateur supprimé ; joueur lent au contact →
+  « approche » à sa vitesse + 4 m/s (8 au moins), visée 6 m au-delà (20 avant) ;
+  de loin → 15 m/s de plus que lui (25 à 60) au lieu de 60 m/s d'office.
+- **Entrées variées** (`EntreesPourCourse`, l'ordre tourne) : à côté (une fois sur
+  deux en tête), derrière sur sa route, **rue de côté** devant lui (25-50°, à 3 s,
+  ≥ 2 s devant, ≥ 15 m de sa ligne, cachée) d'où le flic sort vers sa route, dans
+  son sens.
+- **Rôles tournants** (`RolePour`) : coureur (se cale et serre), bloqueur (double
+  sans serrer puis barre la route), collant (dans sa voie, pare-choc contre
+  pare-choc à +1,5 m/s, se laisse doubler). Jamais plus de 10 m/s au-dessus du
+  joueur, jamais de demi-tour.
+- **`[POLICE] PED`** : policier configurable. Test des crashs proposé :
+  `MODELES=police` + `PED=s_m_y_hwaycop_01` (d'origine) ; plus de crash = mods police.

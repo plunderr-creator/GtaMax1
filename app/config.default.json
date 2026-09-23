@@ -1,0 +1,18 @@
+{
+  "tiktok": {
+    "username": "",
+    "region": "eu-ttp2"
+  },
+  "server": {
+    "port": 3200
+  },
+  "tts": {
+    "enabled": true,
+    "voice": "fr-FR-RemyMultilingualNeural",
+    "volume": 0.8,
+    "read_username": false
+  },
+  "gta": {
+    "dossier_jeu": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Grand Theft Auto V"
+  }
+}

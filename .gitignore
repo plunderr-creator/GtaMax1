@@ -1,0 +1,29 @@
+# Secrets — ne doivent JAMAIS être versionnés (motifs repris de Final Max).
+# Des MOTIFS, pas des chemins exacts : `app/.env` seul laissait passer
+# `app/.env.local`, `app/.env.backup` ou un `.env` posé à la racine, et un
+# `git add .` distrait suffisait à publier le SESSION_ID TikTok.
+.env
+.env.*
+*.key
+*.key.*
+
+# Réglages locaux (créés au premier lancement depuis config.default.json)
+app/config.json
+
+# Roster (muté en continu par le serveur) et ses copies de sûreté
+app/data.json
+app/data.*.json
+app/data.json.corrompu-*
+
+# Runtime et dépendances embarqués (copiés de Final Max, figés par package-lock.json)
+app/node/
+node_modules/
+app/logs/
+
+# Sorties de compilation du plugin (la vraie DLL vit dans le dossier du jeu)
+*.dll
+*.exe
+*.pdb
+
+# Espace de travail SDD (scratch, ignoré)
+.superpowers/

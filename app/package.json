@@ -1,0 +1,49 @@
+{
+  "name": "gta-max",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GTA Max — voix du chat TikTok + une voiture de police a chaque cadeau dans GTA V",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "plugin": "node outils/plugin.js installer"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "//dependencies": [
+    "Versions EXACTES, sans ^ ni ~ : app/node_modules est embarque tel quel (copie",
+    "de Final Max v0.3.0, deja teste en live). Une resolution flottante ferait",
+    "diverger la machine du stream de celle testee — et tiktok-live-connector suit",
+    "un protocole non public qui casse d'une mineure a l'autre. Mettre a jour =",
+    "changer le numero ici, npm install, tester un live, commiter package-lock.json avec.",
+    "axios, ws-cookie-jar, protobufjs & co ne sont PAS listes : ce sont des",
+    "dependances transitives de tiktok-live-connector, le lock les fige."
+  ],
+  "dependencies": {
+    "dotenv": "17.4.2",
+    "tiktok-live-connector": "2.4.0",
+    "ws": "8.21.0"
+  },
+  "//overrides": [
+    "Ces cinq-la sont des dependances TRANSITIVES en plage flottante (^) chez",
+    "tiktok-live-connector : sans ces epingles, un `npm install` fait glisser",
+    "l'arbre sous les pieds de l'installation deja testee.",
+    "axios et form-data sont epingles PLUS HAUT que ce qui trainait dans le",
+    "node_modules d'origine : 1.17.0 et 4.0.5 portaient deux failles hautes",
+    "(GHSA-hmw2-7cc7-3qxx sur form-data, sept avis sur axios). npm proposait de",
+    "les corriger en RETROGRADANT tiktok-live-connector en 2.1.0 — protocole",
+    "TikTok casse ; on remonte les transitives a la place. `npm audit` : 0 faille.",
+    "NE JAMAIS lancer `npm audit fix` : il refait exactement cette retrogradation.",
+    "Les trois autres collent au node_modules d'origine. Relever une ligne = ",
+    "regenerer le lock puis re-tester un live avant de commiter."
+  ],
+  "overrides": {
+    "@bufbuild/protobuf": "2.12.0",
+    "axios": "1.19.0",
+    "form-data": "4.0.6",
+    "got": "15.0.5",
+    "type-fest": "5.7.0"
+  }
+}

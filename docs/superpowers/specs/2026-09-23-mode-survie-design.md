@@ -142,3 +142,33 @@ poursuite (vitesse, streaming) le fait tomber plus tôt ; la cause est côté mo
 - Rayon autour d'un joueur lent : 80 → 60 m.
 - Journal : contrôle 2 s après chaque pose (« se rapproche » ou « S'ÉLOIGNE »),
   contacts par flic et au total.
+
+## Retour du test en jeu n°2 (2026-09-23, 21:57-22:02)
+
+**Journal** : pas de crash. 3 min 22 s de survie (fin : mort), 7 contacts en tout
+(0 à 4 par flic). Les flics posés devant arrivaient de face (« 155 → 15 m en 2 s »),
+ceux posés loin derrière s'éloignaient (« S'ÉLOIGNE »). Le streamer : « on faisait
+des face-à-face à chaque fois » ; il veut qu'ils apparaissent à côté de lui, un peu
+devant, et fassent la course avec lui.
+
+**Corrections — la COURSE** (joueur à plus de 54 km/h) :
+- **Apparition** : sur la voie d'à côté (4 ou 7,5 m sur le côté), 15 ou 25 m
+  derrière le joueur — donc derrière la caméra, hors de sa vue —, au même niveau
+  (écart ≤ 3 m), sur la route (`IS_POINT_ON_ROAD`), voie libre (aucune voiture à
+  3,5 m), tourné dans SON sens, lancé 6 m/s plus vite que lui : à sa hauteur en
+  1 à 2 s. À défaut, derrière lui sur sa route (60 m). Plus jamais posé devant,
+  tourné vers lui. (Posé « un peu devant » directement, il surgirait sous ses yeux.)
+- **Consignes de course** (`ReglesSurvie.ConsigneCourse`, repère du joueur) :
+  derrière → il remonte sur son côté (joueur + 8 m/s) ; à sa hauteur (±8 m) → il
+  serre vers lui en ligne droite (coup d'épaule, joueur + 2 m/s) ; devant → il se
+  rabat devant lui, à peine moins vite (joueur − 2 m/s : il lui barre la route).
+  La cible court toujours devant le flic dans le sens de la course : jamais de
+  demi-tour, jamais de face-à-face. La vitesse de croisière suit celle du joueur.
+- **Vitesse de pointe adaptée** (`BonusPourSuivre`) : +8 % au-dessus de la voiture
+  du joueur (`GET_VEHICLE_ESTIMATED_MAX_SPEED` contre
+  `GET_VEHICLE_MODEL_ESTIMATED_MAX_SPEED` du modèle de police), jamais moins que
+  `BONUS_MOTEUR`, 150 % au plus ; recalculée à chaque recyclage et toutes les 10 s
+  (il peut changer de voiture).
+- Rattrapage invisible remonté à 250 km/h (toujours aligné, 4 roues au sol).
+- Journal : phase de chaque flic (rattrape / à sa hauteur / devant / percute /
+  traque) et bonus moteur dans le résumé.

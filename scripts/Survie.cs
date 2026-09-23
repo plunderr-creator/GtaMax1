@@ -132,13 +132,44 @@ namespace GTAMax
             return a >= 135f ? "derrière" : a >= 45f ? "sur le côté" : "devant";
         }
 
-        // Joueur RAPIDE : un flic placé derrière ou sur le côté ne le rattrape jamais
-        // (test du 2026-09-23 : à 230 km/h, 63 réapparitions en 1 min 45 et aucun
-        // contact). Il vient donc DEVANT, sur la route que le joueur va prendre, à
-        // 3 s de lui (90 à 170 m) : c'est le joueur qui fonce sur lui.
-        public static float DistanceDevant(float vitesseJoueurMs)
+        // Joueur RAPIDE : la COURSE. Test n°1 : placés derrière ou sur les côtés, loin,
+        // les flics ne le rattrapaient jamais ; test n°2 : placés devant et tournés
+        // vers lui, c'étaient des face-à-face. Demande du streamer : qu'ils fassent la
+        // course avec lui. Repère du joueur : L = combien le flic est devant (+) ou
+        // derrière (−), S = de quel côté. Derrière : il remonte sur SON côté, plus vite
+        // que le joueur ; à sa hauteur : il serre vers lui (coup d'épaule, PIT), à
+        // peine plus vite ; devant : il se rabat devant lui, à peine moins vite (il lui
+        // barre la route). La cible est TOUJOURS devant le flic dans le sens de la
+        // course : il ne fait jamais demi-tour. Rend la phase ; x, y = cible ; vitesse
+        // = vitesse de croisière voulue (m/s).
+        public const float COURSE_HAUTEUR_M = 8f;
+        public static string ConsigneCourse(float jx, float jy, float vjx, float vjy, float cx, float cy,
+                                            float droiteX, float droiteY, out float x, out float y, out float vitesse)
         {
-            return Math.Min(170f, Math.Max(90f, vitesseJoueurMs * 3f));
+            float vj = (float)Math.Sqrt(vjx * vjx + vjy * vjy);
+            float fx = vj > 0.1f ? vjx / vj : -droiteY, fy = vj > 0.1f ? vjy / vj : droiteX;   // sinon : « devant » tiré de sa droite
+            float dx = cx - jx, dy = cy - jy;
+            float l = dx * fx + dy * fy, s = dx * droiteX + dy * droiteY;
+            float cote = s >= 0f ? 1f : -1f;
+            float avance = 12f + vj * 0.5f;   // la cible court devant le joueur
+            float devant, lateral;
+            string phase;
+            if (l < -COURSE_HAUTEUR_M) { phase = "rattrape"; devant = avance + 3f; lateral = cote * 2.5f; vitesse = vj + 8f; }
+            else if (l <= COURSE_HAUTEUR_M) { phase = "à sa hauteur"; devant = Math.Max(avance, l + 12f); lateral = cote * 0.3f; vitesse = vj + 2f; }
+            else { phase = "devant"; devant = l + avance; lateral = 0f; vitesse = Math.Max(10f, vj - 2f); }
+            x = jx + fx * devant + droiteX * lateral;
+            y = jy + fy * devant + droiteY * lateral;
+            return phase;
+        }
+
+        // Vitesse de pointe en plus (%, MODIFY_VEHICLE_TOP_SPEED) pour que le flic
+        // puisse suivre la voiture du joueur (+8 %) : une supercar à 250 km/h
+        // distançait la voiture de police. Jamais moins que le réglage, plafonnée.
+        public static float BonusPourSuivre(float vmaxJoueurMs, float vmaxFlicMs, float bonusMin, float bonusMax)
+        {
+            if (vmaxJoueurMs <= 1f || vmaxFlicMs <= 1f) return Math.Min(bonusMax, Math.Max(0f, bonusMin));
+            float besoin = (vmaxJoueurMs * 1.08f / vmaxFlicMs - 1f) * 100f;
+            return Math.Min(bonusMax, Math.Max(bonusMin, besoin));
         }
 
         // Peut-on poser un flic à cet endroit ? Hors du champ de la caméra : oui.
@@ -297,6 +328,8 @@ namespace GTAMax
         public string SuiviOu;
         public int Contacts;            // fois où il est arrivé au contact du joueur
         public bool AuContact;
+        public string Phase = "";       // course : « rattrape », « à sa hauteur », « devant »
+        public float Bonus;             // vitesse de pointe en plus appliquée (%)
         public bool DiagnostiqueFait;
     }
 
@@ -308,10 +341,15 @@ namespace GTAMax
         const float DEMI_CHAMP_DEG = 60f;           // cône de la caméra, large marge comprise
         const float DISTANCE_MIN_CACHE_M = 60f;      // dans le cône : seulement caché par le décor, et loin
         const float DISTANCE_ENTRE_FLICS_M = 20f;
-        const float VITESSE_RAPIDE_MS = 15f;         // au-dessus (54 km/h), les flics viennent DEVANT, sur sa route
-        const float DISTANCE_DERRIERE_ROUTE_M = 60f; // sinon derrière, sur sa route
-        const float DISTANCE_MIN_VISIBLE_DEVANT_M = 120f;   // devant, visible seulement au loin (un point sur la route)
-        const float VITESSE_LANCER_DEVANT_MS = 15f;
+        const float VITESSE_RAPIDE_MS = 15f;         // au-dessus (54 km/h) : la course (flics à côté de lui, dans son sens)
+        const float A_COTE_RECUL_M = 15f;            // posé sur la voie d'à côté, 15 m derrière lui : hors de sa vue
+        const float DISTANCE_DERRIERE_ROUTE_M = 60f; // à défaut, derrière, sur sa route
+        const float LANCER_PLUS_MS = 6f;             // posé derrière : lancé 6 m/s plus vite que lui, à sa hauteur en 1-2 s
+        const float VITESSE_LANCER_AUTRE_MS = 15f;   // posé ailleurs (joueur lent) : il démarre
+        const float COURSE_DISTANCE_M = 60f;         // plus près, joueur rapide : consignes de course
+        const float BONUS_MAX = 150f;                // vitesse de pointe en plus, au plus (%)
+        // Coup d'épaule : ne contourne pas le joueur (64), voies d'en face permises (512), ligne droite (16777216).
+        const int CONDUITE_COUP_D_EPAULE = 64 | 512 | 16777216;
         const float SEME_DERRIERE_M = 120f, SEME_M = 200f;  // Driver 2 : « ping out » au bord de la bulle
         const int RECYCLAGE_MIN_MS = 3000;           // un même flic n'est pas replacé plus d'une fois toutes les 3 s
         const int SUIVI_MS = 2000;
@@ -327,9 +365,10 @@ namespace GTAMax
         const float FLANC_M = 1.5f, DEPASSEMENT_M = 20f, INTERCEPTION_MAX_S = 2f;
         const float DISTANCE_COUP_M = 15f, COS_FACE = 0.87f, ELAN_COUP_MS = 6f;
         const int ORDRE_PRES_MS = 500, ORDRE_LOIN_MS = 1000, COUP_MS = 500;
-        // Rattrapage invisible plafonné à 180 km/h et seulement bien aligné, 4 roues au sol :
-        // poussés à 234 km/h au test du 2026-09-23, ils se retournaient (12 fois en 1 min 45).
-        const float DISTANCE_MIN_RATTRAPAGE_M = 35f, COS_RATTRAPAGE = 0.9f, VITESSE_MAX_MS = 50f;
+        // Rattrapage invisible seulement bien aligné et 4 roues au sol : poussés en
+        // travers à 234 km/h au test n°1, ils se retournaient (12 fois en 1 min 45).
+        // Plafond relevé à 250 km/h au test n°2 : la course doit suivre une supercar.
+        const float DISTANCE_MIN_RATTRAPAGE_M = 35f, COS_RATTRAPAGE = 0.9f, VITESSE_MAX_MS = 70f;
         const float VITESSE_MAX_COUP_MS = 70f;       // coup d'accélérateur au contact (< 15 m, face au joueur)
         const int PING_MS = 750;                     // un recyclage toutes les 0,75 s au plus, tous flics confondus
         const int CREATION_MS = 3000;                // une création toutes les 3 s au plus
@@ -617,7 +656,6 @@ namespace GTAMax
             Function.Call(Hash.SET_ENTITY_LOAD_COLLISION_FLAG, v, true);
             Function.Call(Hash.SET_VEHICLE_HANDBRAKE, v, false);
             Function.Call(Hash.SET_VEHICLE_ENGINE_ON, v, true, true, false);
-            if (bonusMoteur > 0f) Function.Call(Hash.MODIFY_VEHICLE_TOP_SPEED, v, bonusMoteur);
             if (indestructibles)
             {
                 // Comme dans Driver 2 : les chocs cabossent, rien ne l'arrête.
@@ -645,18 +683,21 @@ namespace GTAMax
                 Donateur = dernierDonateur, NeeA = maintenant, DernierePoseA = maintenant,
             };
             flics.Add(f);
+            AjusterPuissance(f, joueur);
             Suivre(f, position, joueur, ou, maintenant);
             Lancer(f, joueur, position);
             Ordonner(f, joueur, v.Position.DistanceTo(joueur.Position), !joueur.IsInVehicle());
-            journal.Info("Survie : flic " + f.Numero + " apparu (" + flics.Count + "/" + poursuite.FlicsVoulus + ", cadeau de " + f.Donateur + ") — " + ou);
+            journal.Info("Survie : flic " + f.Numero + " apparu (" + flics.Count + "/" + poursuite.FlicsVoulus + ", cadeau de " + f.Donateur + ") — " + ou
+                + ", moteur +" + Math.Round(f.Bonus) + " %");
         }
 
         // ─── OÙ FAIRE APPARAÎTRE ─────────────────────────────────────────
-        // Joueur rapide : DEVANT, sur la route qu'il va prendre (le jeu la prédit :
-        // FIND_SPAWN_POINT_IN_DIRECTION), à 3 s de lui, tourné vers lui ; à défaut
-        // derrière, sur sa route. Lent ou arrêté (ou rien sur sa route) : une route
-        // tout autour (derrière d'abord). Toujours hors du champ de la caméra, ou
-        // caché par le décor, ou — devant — assez loin pour n'être qu'un point.
+        // Joueur rapide : LA COURSE — sur la voie d'à côté, juste derrière lui (hors
+        // de sa vue), dans son sens, lancé un peu plus vite que lui : à sa hauteur en
+        // 1 à 2 s. À défaut, derrière lui sur sa route. Lent ou arrêté (ou rien de
+        // libre) : une route tout autour (derrière d'abord). Toujours hors du champ de
+        // la caméra, ou caché par le décor. Plus jamais posé devant, tourné vers lui :
+        // c'étaient des face-à-face (test n°2).
         bool TrouverPoint(Ped joueur, bool nouveau, out Vector3 position, out float cap, out string ou)
         {
             position = Vector3.Zero; cap = 0f; ou = "";
@@ -669,8 +710,8 @@ namespace GTAMax
 
             if (vitesse >= VITESSE_RAPIDE_MS)
             {
-                if (SurSaRoute(pj, dir.X, dir.Y, ReglesSurvie.DistanceDevant(vitesse), true, cam, rot, out position, out cap, out ou)) return true;
-                if (SurSaRoute(pj, -dir.X, -dir.Y, DISTANCE_DERRIERE_ROUTE_M, false, cam, rot, out position, out cap, out ou)) return true;
+                if (ACoteDeLui(pj, dir, cam, rot, out position, out cap, out ou)) return true;
+                if (DerriereSurSaRoute(pj, dir, cam, rot, out position, out cap, out ou)) return true;
             }
 
             double cap0 = Math.Atan2(dir.Y, dir.X);
@@ -690,9 +731,9 @@ namespace GTAMax
 
                 float distance = new Vector3(n.X - pj.X, n.Y - pj.Y, 0f).Length();
                 if (!ReglesSurvie.DistanceDApparitionOk(distance, n.Z - pj.Z, rayonM)) continue;
-                if (PresDUnFlic(n)) continue;
+                if (PresDUnFlic(n, DISTANCE_ENTRE_FLICS_M)) continue;
                 string vue;
-                if (!Accepter(n, distance, false, cam, rot, out vue)) continue;
+                if (!Accepter(n, distance, cam, rot, out vue)) continue;
                 position = n;
                 cap = ReglesSurvie.CapDeRouteVers(h, n.X, n.Y, pj.X, pj.Y);   // le sens rendu peut lui tourner le dos
                 ou = ReglesSurvie.Secteur(angle) + ", " + Math.Round(distance) + " m, " + vue;
@@ -701,24 +742,55 @@ namespace GTAMax
             return false;
         }
 
-        // Un point sur la route du joueur, devant (dx, dy = sa direction) ou derrière (direction opposée).
-        bool SurSaRoute(Vector3 pj, float dx, float dy, float distanceVoulue, bool devant, Vector3 cam, Vector3 rot,
-                        out Vector3 position, out float cap, out string ou)
+        // La course : sur la voie d'à côté (4 ou 7,5 m sur le côté), 15 ou 25 m
+        // derrière lui — sur la route, au même niveau, voie libre, hors de sa vue —,
+        // tourné dans SON sens.
+        bool ACoteDeLui(Vector3 pj, Vector3 dir, Vector3 cam, Vector3 rot, out Vector3 position, out float cap, out string ou)
         {
             position = Vector3.Zero; cap = 0f; ou = "";
-            float l = (float)Math.Sqrt(dx * dx + dy * dy);
+            float l = (float)Math.Sqrt(dir.X * dir.X + dir.Y * dir.Y);
+            if (l < 0.01f) return false;
+            float fx = dir.X / l, fy = dir.Y / l;
+            float rx = fy, ry = -fx;   // sa droite : son « devant » tourné d'un quart de tour horaire
+            float[] cotes = (cookie++ & 1) == 0 ? new[] { 4f, -4f, 7.5f, -7.5f } : new[] { -4f, 4f, -7.5f, 7.5f };
+            foreach (float recul in new[] { A_COTE_RECUL_M, A_COTE_RECUL_M + 10f })
+                foreach (float cote in cotes)
+                {
+                    float x = pj.X - fx * recul + rx * cote, y = pj.Y - fy * recul + ry * cote;
+                    var sol = new OutputArgument();
+                    if (!Function.Call<bool>(Hash.GET_GROUND_Z_FOR_3D_COORD, x, y, pj.Z + 5f, sol, false, false)) continue;
+                    float z = sol.GetResult<float>();
+                    if (Math.Abs(z - pj.Z) > 3f) continue;                                  // pas un autre étage (pont, talus)
+                    if (!Function.Call<bool>(Hash.IS_POINT_ON_ROAD, x, y, z, 0)) continue;  // sur la route, pas dans le décor
+                    var p = new Vector3(x, y, z);
+                    if (PresDUnFlic(p, 8f) || World.GetNearbyVehicles(p, 3.5f).Length > 0) continue;   // voie libre
+                    string vue;
+                    if (!Accepter(p, recul, cam, rot, out vue)) continue;
+                    position = p;
+                    cap = ReglesSurvie.CapVers(0f, 0f, fx, fy);
+                    ou = "à côté (" + (cote > 0 ? "à droite" : "à gauche") + ", " + recul + " m derrière), " + vue;
+                    return true;
+                }
+            return false;
+        }
+
+        // À défaut : derrière lui sur sa route (le jeu prédit la route : FIND_SPAWN_POINT_IN_DIRECTION),
+        // dans le sens de la route qui va vers lui, donc dans son sens à lui.
+        bool DerriereSurSaRoute(Vector3 pj, Vector3 dir, Vector3 cam, Vector3 rot, out Vector3 position, out float cap, out string ou)
+        {
+            position = Vector3.Zero; cap = 0f; ou = "";
+            float l = (float)Math.Sqrt(dir.X * dir.X + dir.Y * dir.Y);
             if (l < 0.01f) return false;
             var sortie = new OutputArgument();
-            if (!Function.Call<bool>(Hash.FIND_SPAWN_POINT_IN_DIRECTION, pj.X, pj.Y, pj.Z, dx / l, dy / l, 0f, distanceVoulue, sortie)) return false;
+            if (!Function.Call<bool>(Hash.FIND_SPAWN_POINT_IN_DIRECTION, pj.X, pj.Y, pj.Z, -dir.X / l, -dir.Y / l, 0f, DISTANCE_DERRIERE_ROUTE_M, sortie)) return false;
             Vector3 p = sortie.GetResult<Vector3>();
             if (p == Vector3.Zero) return false;
             float distance = new Vector3(p.X - pj.X, p.Y - pj.Y, 0f).Length();
-            if (distance < distanceVoulue * 0.5f || distance > distanceVoulue * 1.6f || Math.Abs(p.Z - pj.Z) > 12f) return false;
-            if (PresDUnFlic(p)) return false;
+            if (distance < DISTANCE_DERRIERE_ROUTE_M * 0.5f || distance > DISTANCE_DERRIERE_ROUTE_M * 1.6f || Math.Abs(p.Z - pj.Z) > 12f) return false;
+            if (PresDUnFlic(p, DISTANCE_ENTRE_FLICS_M)) return false;
             string vue;
-            if (!Accepter(p, distance, devant, cam, rot, out vue)) return false;
+            if (!Accepter(p, distance, cam, rot, out vue)) return false;
 
-            // Sens de la route à cet endroit, tourné vers le joueur (à défaut : droit vers lui).
             float capRoute = ReglesSurvie.CapVers(p.X, p.Y, pj.X, pj.Y);
             var noeud = new OutputArgument();
             var capNoeud = new OutputArgument();
@@ -727,20 +799,31 @@ namespace GTAMax
                 capRoute = capNoeud.GetResult<float>();
             position = p;
             cap = ReglesSurvie.CapDeRouteVers(capRoute, p.X, p.Y, pj.X, pj.Y);
-            ou = (devant ? "devant, sur sa route" : "derrière, sur sa route") + ", " + Math.Round(distance) + " m, " + vue;
+            ou = "derrière, sur sa route, " + Math.Round(distance) + " m, " + vue;
             return true;
         }
 
-        // Hors du champ de la caméra : oui. Dans le champ : caché par le décor à 60 m
-        // ou plus ; ou, DEVANT un joueur rapide, à 120 m ou plus (un point sur la route).
-        bool Accepter(Vector3 p, float distance, bool devant, Vector3 cam, Vector3 rot, out string vue)
+        // Hors du champ de la caméra : oui. Dans le champ : seulement caché par le décor, à 60 m ou plus.
+        bool Accepter(Vector3 p, float distance, Vector3 cam, Vector3 rot, out string vue)
         {
             bool dansLeChamp = ReglesSurvie.DansLeChamp(cam.X, cam.Y, cam.Z, rot.X, rot.Z, p.X, p.Y, p.Z + 1f, DEMI_CHAMP_DEG);
             bool cache = dansLeChamp && distance >= DISTANCE_MIN_CACHE_M
                 && Function.Call<bool>(Hash.WOULD_ENTITY_BE_OCCLUDED, modeleVoiture.Hash, p.X, p.Y, p.Z + 1f, true);
-            vue = !dansLeChamp ? "hors champ" : cache ? "caché par le décor" : "au loin";
-            return ReglesSurvie.ApparitionAcceptee(dansLeChamp, cache, distance, DISTANCE_MIN_CACHE_M,
-                devant ? DISTANCE_MIN_VISIBLE_DEVANT_M : float.MaxValue);
+            vue = !dansLeChamp ? "hors champ" : "caché par le décor";
+            return ReglesSurvie.ApparitionAcceptee(dansLeChamp, cache, distance, DISTANCE_MIN_CACHE_M, float.MaxValue);
+        }
+
+        // Vitesse de pointe du flic : de quoi suivre la voiture du joueur (une supercar
+        // distançait la voiture de police), jamais moins que BONUS_MOTEUR.
+        void AjusterPuissance(FlicSurvie f, Ped joueur)
+        {
+            Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
+            float vmaxJoueur = vj != null ? Function.Call<float>(Hash.GET_VEHICLE_ESTIMATED_MAX_SPEED, vj) : 0f;
+            float vmaxFlic = Function.Call<float>(Hash.GET_VEHICLE_MODEL_ESTIMATED_MAX_SPEED, f.ModeleHash);
+            float bonus = ReglesSurvie.BonusPourSuivre(vmaxJoueur, vmaxFlic, bonusMoteur, BONUS_MAX);
+            if (Math.Abs(bonus - f.Bonus) < 1f && f.Bonus > 0f) return;
+            f.Bonus = bonus;
+            if (bonus > 0f) Function.Call(Hash.MODIFY_VEHICLE_TOP_SPEED, f.Voiture, bonus);
         }
 
         // Contrôle 2 s après la pose : le journal dira s'il s'est rapproché (et donc s'il était bien tourné).
@@ -752,22 +835,22 @@ namespace GTAMax
             f.SuiviOu = virgule > 0 ? ou.Substring(0, virgule) : ou;
         }
 
-        bool PresDUnFlic(Vector3 p)
+        bool PresDUnFlic(Vector3 p, float distanceMin)
         {
             foreach (FlicSurvie f in flics)
-                if (f.Voiture.Exists() && f.Voiture.Position.DistanceTo(p) < DISTANCE_ENTRE_FLICS_M) return true;
+                if (f.Voiture.Exists() && f.Voiture.Position.DistanceTo(p) < distanceMin) return true;
             return false;
         }
 
-        // Juste posé : derrière le joueur, il part à sa vitesse (sinon il ne le
-        // rattraperait jamais) ; ailleurs, il démarre, tourné vers lui.
+        // Juste posé : derrière le joueur, il part un peu plus vite que lui (à sa
+        // hauteur en 1 à 2 s) ; ailleurs (joueur lent), il démarre.
         void Lancer(FlicSurvie f, Ped joueur, Vector3 position)
         {
             Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
             if (vj == null) return;
             Vector3 rel = position - joueur.Position;
             bool derriere = Regles.EstDerriere(rel.X, rel.Y, vj.ForwardVector.X, vj.ForwardVector.Y);
-            float vitesse = derriere ? Math.Min(vj.Speed, 45f) : VITESSE_LANCER_DEVANT_MS;
+            float vitesse = derriere ? Math.Min(vj.Speed + LANCER_PLUS_MS, VITESSE_MAX_MS) : VITESSE_LANCER_AUTRE_MS;
             if (vitesse > 3f) Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, f.Voiture, vitesse);
         }
 
@@ -837,7 +920,7 @@ namespace GTAMax
             if (maintenant >= f.ProchainOrdre)
             {
                 Ordonner(f, joueur, distance, aPied);
-                f.ProchainOrdre = maintenant + (distance <= DISTANCE_PERCUTER_M ? ORDRE_PRES_MS : ORDRE_LOIN_MS);
+                f.ProchainOrdre = maintenant + (distance <= COURSE_DISTANCE_M ? ORDRE_PRES_MS : ORDRE_LOIN_MS);
             }
             if (!aPied && distance < DISTANCE_COUP_M && maintenant >= f.ProchainCoup) Percuter(f, joueur, maintenant);
         }
@@ -857,6 +940,21 @@ namespace GTAMax
             }
             Vehicle vj = joueur.CurrentVehicle;
             Vector3 vitJ = vj.Velocity, vitC = v.Velocity, pc = v.Position;
+
+            // Joueur rapide, flic dans les parages : la course (ReglesSurvie.ConsigneCourse).
+            // La vitesse de croisière suit celle du joueur : il remonte, se cale à sa
+            // hauteur, serre, passe devant — sans jamais lui foncer dessus de face.
+            if (vj.Speed >= VITESSE_RAPIDE_MS && distance <= COURSE_DISTANCE_M)
+            {
+                float cx, cy, vitesse;
+                Vector3 droiteJ = vj.RightVector;
+                f.Phase = ReglesSurvie.ConsigneCourse(pj.X, pj.Y, vitJ.X, vitJ.Y, pc.X, pc.Y, droiteJ.X, droiteJ.Y, out cx, out cy, out vitesse);
+                int styleCourse = f.Phase == "à sa hauteur" ? CONDUITE_COUP_D_EPAULE : Regles.CONDUITE_TRAQUE;
+                Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, f.Conducteur, v, cx, cy, pj.Z, Math.Min(vitesse, VITESSE_MAX_MS), 1,
+                    f.ModeleHash, styleCourse, 0.5f, 1f);
+                return;
+            }
+
             float x, y;
             int style;
             if (distance <= DISTANCE_PERCUTER_M)
@@ -866,12 +964,14 @@ namespace GTAMax
                 Vector3 droite = vj.RightVector;
                 ReglesSurvie.PointVise(pj.X, pj.Y, vitJ.X, vitJ.Y, pc.X, pc.Y, t, droite.X, droite.Y, FLANC_M, DEPASSEMENT_M, out x, out y);
                 style = Regles.StyleConduite(distance, DISTANCE_LIGNE_DROITE_M);
+                f.Phase = "percute";
             }
             else
             {
                 float t = Regles.Anticipation(distance, v.Speed);
                 x = pj.X + vitJ.X * t; y = pj.Y + vitJ.Y * t;
                 style = Regles.CONDUITE_TRAQUE;
+                f.Phase = "traque";
             }
             Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, f.Conducteur, v, x, y, pj.Z, GTAMax.VITESSE_TRAQUE, 1, f.ModeleHash, style, 0.5f, 1f);
         }
@@ -935,6 +1035,7 @@ namespace GTAMax
             v.IsSirenActive = true;
             if (f.Conducteur != null && f.Conducteur.Exists() && !f.Conducteur.IsDead && !f.Conducteur.IsInVehicle(v))
                 Function.Call(Hash.SET_PED_INTO_VEHICLE, f.Conducteur, v, -1);
+            AjusterPuissance(f, joueur);   // il a pu changer de voiture
             Lancer(f, joueur, position);
             f.PlanteeDepuis = 0; f.Manoeuvres = 0; f.ManoeuvreJusquA = 0; f.ProchainOrdre = 0;
             f.Recyclages++;
@@ -954,8 +1055,9 @@ namespace GTAMax
             foreach (FlicSurvie f in flics)
             {
                 if (!f.Voiture.Exists()) continue;
+                AjusterPuissance(f, joueur);   // il a pu changer de voiture
                 sb.Append(" | flic " + f.Numero + " : " + Math.Round(f.Voiture.Speed * 3.6f) + " km/h à " + Math.Round(f.Voiture.Position.DistanceTo(joueur.Position)) + " m, "
-                    + f.Contacts + " contact(s)");
+                    + f.Phase + ", " + f.Contacts + " contact(s), moteur +" + Math.Round(f.Bonus) + " %");
                 if (f.MorteA != 0) sb.Append(" (épave)");
             }
             journal.Info(sb.ToString());

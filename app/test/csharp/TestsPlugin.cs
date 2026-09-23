@@ -268,11 +268,35 @@ static class TestsPlugin
         Verifier("apparition : trop loin (200 m), refusé", !ReglesSurvie.DistanceDApparitionOk(200f, 0f, 80f), "accepté");
         Verifier("apparition : 15 m plus bas (sous un pont), refusé", !ReglesSurvie.DistanceDApparitionOk(80f, -15f, 80f), "accepté");
 
-        // Joueur rapide : les flics viennent DEVANT, sur sa route (test en jeu du 2026-09-23 :
-        // à 230 km/h, placés derrière ou sur les côtés, ils ne l'attrapaient jamais).
-        Verifier("devant : à 230 km/h (64 m/s), 170 m devant (plafond)", ReglesSurvie.DistanceDevant(64f) == 170f, ReglesSurvie.DistanceDevant(64f).ToString());
-        Verifier("devant : à 150 km/h (42 m/s), 3 s devant ≈ 125 m", Math.Abs(ReglesSurvie.DistanceDevant(41.6f) - 124.8f) < 0.1f, ReglesSurvie.DistanceDevant(41.6f).ToString());
-        Verifier("devant : lent, 90 m au moins", ReglesSurvie.DistanceDevant(10f) == 90f, ReglesSurvie.DistanceDevant(10f).ToString());
+        // Joueur rapide : la COURSE (test n°2 du 2026-09-23 : posés devant et tournés vers
+        // lui, les flics faisaient des face-à-face). Joueur à l'origine vers le nord à
+        // 30 m/s, sa droite = +X. La cible court devant le joueur (12 m + 0,5 s).
+        float cx, cy, cv;
+        string phase = ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, -4f, -30f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("course : derrière à gauche → il remonte sur SA gauche, plus vite que le joueur",
+            phase == "rattrape" && cx < -1f && cy > 20f && Math.Abs(cv - 38f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
+        phase = ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, 4f, 2f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("course : à sa hauteur à droite → il serre vers le joueur, à peine plus vite",
+            phase == "à sa hauteur" && cx > 0f && cx < 1f && cy > 20f && Math.Abs(cv - 32f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
+        phase = ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, 3f, 20f, 1f, 0f, out cx, out cy, out cv);
+        Verifier("course : devant → il se rabat devant lui, à peine moins vite (lui barre la route)",
+            phase == "devant" && Math.Abs(cx) < 1e-3 && cy > 40f && Math.Abs(cv - 28f) < 1e-3, phase + " " + cx + ";" + cy + " " + cv);
+        bool jamaisDemiTour = true;
+        foreach (float l in new[] { -60f, -20f, -8f, 0f, 8f, 15f, 40f })
+        {
+            ReglesSurvie.ConsigneCourse(0f, 0f, 0f, 30f, 3f, l, 1f, 0f, out cx, out cy, out cv);
+            if (cy <= l + 5f) jamaisDemiTour = false;
+        }
+        Verifier("course : la cible est toujours devant le flic, dans le sens de la course (jamais de demi-tour)", jamaisDemiTour, "");
+        // Vitesse de pointe : de quoi suivre la voiture du joueur (+8 %), jamais moins que le réglage.
+        Verifier("puissance : supercar à 252 km/h contre 144 km/h → +89 %", Math.Abs(ReglesSurvie.BonusPourSuivre(70f, 40f, 40f, 150f) - 89f) < 0.1f,
+            ReglesSurvie.BonusPourSuivre(70f, 40f, 40f, 150f).ToString());
+        Verifier("puissance : voiture lente → le réglage (40 %)", ReglesSurvie.BonusPourSuivre(30f, 40f, 40f, 150f) == 40f,
+            ReglesSurvie.BonusPourSuivre(30f, 40f, 40f, 150f).ToString());
+        Verifier("puissance : plafonnée à 150 %", ReglesSurvie.BonusPourSuivre(100f, 40f, 40f, 150f) == 150f,
+            ReglesSurvie.BonusPourSuivre(100f, 40f, 40f, 150f).ToString());
+        Verifier("puissance : vitesse inconnue (0) → le réglage", ReglesSurvie.BonusPourSuivre(0f, 40f, 40f, 150f) == 40f,
+            ReglesSurvie.BonusPourSuivre(0f, 40f, 40f, 150f).ToString());
         Verifier("apparition hors champ : acceptée", ReglesSurvie.ApparitionAcceptee(false, false, 40f, 60f, 120f), "refusée");
         Verifier("apparition dans le champ, cachée par le décor à 70 m : acceptée", ReglesSurvie.ApparitionAcceptee(true, true, 70f, 60f, 120f), "refusée");
         Verifier("apparition dans le champ, cachée mais à 40 m : refusée", !ReglesSurvie.ApparitionAcceptee(true, true, 40f, 60f, 120f), "acceptée");

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<!--
+  GTA MAX — OVERLAY TikTok Live
+  OBS : Source Navigateur 1920×1080, fond transparent, « Contrôler l'audio via OBS »
+  coché (la voix du chat sort dans la source).
+  SEUL élément visuel en v1 : l'alerte de don. Pas de fil de chat, pas de
+  compteur, pas de file visible. Invisible (et muet) tant que rien n'arrive.
+  Aperçu à la main : bouton « Tester un don » du setup, ou dans la console
+  GTAMaxOverlay.alerte({ pseudo:'Bob', cadeau:'Rose', nombre:3 }).
+-->
+<head>
+<meta charset="UTF-8"/>
+<title>GTA Max — overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/overlay.css">
+</head>
+<body>
+
+<!-- Lueur gyrophare sur les bords de l'écran pendant une alerte (deux calques :
+     on anime leur opacité, jamais l'ombre elle-même — coût GPU nul sous OBS). -->
+<div id="lueur" aria-hidden="true">
+  <div class="lueur-bleu"></div>
+  <div class="lueur-rouge"></div>
+</div>
+
+<div id="alerte" class="alerte" aria-live="polite">
+  <div class="rampe" aria-hidden="true">
+    <span class="feu bleu"></span><span class="feu bleu"></span><span class="feu bleu"></span>
+    <span class="barre"></span>
+    <span class="feu rouge"></span><span class="feu rouge"></span><span class="feu rouge"></span>
+  </div>
+  <div class="corps">
+    <div class="titre">🚨 ALERTE POLICE 🚨</div>
+    <div class="pseudo" id="alerte-pseudo"></div>
+    <div class="detail" id="alerte-detail"></div>
+  </div>
+</div>
+
+<script src="/overlay.js"></script>
+</body>
+</html>

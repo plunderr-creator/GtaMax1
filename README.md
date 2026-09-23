@@ -60,10 +60,12 @@ carte « État » dit combien il y en a.
 
 **`MODE=survie`** (défaut, inspiré du mode Survival de Driver 2) : chaque cadeau
 lâche un flic de plus à tes trousses (4 max ; au-delà, ils accélèrent). Voitures
-Police Nationale **indestructibles** qui visent ton flanc pour te percuter ; elles
-apparaissent toujours sur une route **hors de ta vue** (derrière, sur les côtés,
-ou cachées par un bâtiment), et un flic semé ou planté réapparaît ailleurs, hors
-de vue. Aucune police du jeu pendant la poursuite (pas de tirs, d'hélicos ni de
+Police Nationale **indestructibles**. Quand tu roules vite, c'est **la course** :
+ils arrivent sur la voie d'à côté, dans ton sens, se calent à ta hauteur, te
+serrent et passent devant pour te barrer la route (leur vitesse de pointe
+s'adapte à ta voiture). Lent ou arrêté, ils arrivent autour de toi. Ils
+apparaissent toujours sur une route **hors de ta vue**, et un flic semé ou planté
+réapparaît ailleurs, hors de vue. Aucune police du jeu pendant la poursuite (pas de tirs, d'hélicos ni de
 renforts). Elle s'arrête 60 s après le dernier cadeau : « Survécu ! » avec ton
 temps et ton record (`<GTA V>\scripts\GTAMax.record`). À pied, un flic arrêté
 près de toi 2 s : « Attrapé ! ». Réglages dans `[SURVIE]` : `MAX_FLICS`,

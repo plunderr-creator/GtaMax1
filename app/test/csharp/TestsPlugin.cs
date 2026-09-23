@@ -268,6 +268,26 @@ static class TestsPlugin
         Verifier("apparition : trop loin (200 m), refusé", !ReglesSurvie.DistanceDApparitionOk(200f, 0f, 80f), "accepté");
         Verifier("apparition : 15 m plus bas (sous un pont), refusé", !ReglesSurvie.DistanceDApparitionOk(80f, -15f, 80f), "accepté");
 
+        // Joueur rapide : les flics viennent DEVANT, sur sa route (test en jeu du 2026-09-23 :
+        // à 230 km/h, placés derrière ou sur les côtés, ils ne l'attrapaient jamais).
+        Verifier("devant : à 230 km/h (64 m/s), 170 m devant (plafond)", ReglesSurvie.DistanceDevant(64f) == 170f, ReglesSurvie.DistanceDevant(64f).ToString());
+        Verifier("devant : à 150 km/h (42 m/s), 3 s devant ≈ 125 m", Math.Abs(ReglesSurvie.DistanceDevant(41.6f) - 124.8f) < 0.1f, ReglesSurvie.DistanceDevant(41.6f).ToString());
+        Verifier("devant : lent, 90 m au moins", ReglesSurvie.DistanceDevant(10f) == 90f, ReglesSurvie.DistanceDevant(10f).ToString());
+        Verifier("apparition hors champ : acceptée", ReglesSurvie.ApparitionAcceptee(false, false, 40f, 60f, 120f), "refusée");
+        Verifier("apparition dans le champ, cachée par le décor à 70 m : acceptée", ReglesSurvie.ApparitionAcceptee(true, true, 70f, 60f, 120f), "refusée");
+        Verifier("apparition dans le champ, cachée mais à 40 m : refusée", !ReglesSurvie.ApparitionAcceptee(true, true, 40f, 60f, 120f), "acceptée");
+        Verifier("apparition dans le champ, visible à 80 m : refusée", !ReglesSurvie.ApparitionAcceptee(true, false, 80f, 60f, 120f), "acceptée");
+        Verifier("apparition devant, visible mais au loin (150 m) : acceptée", ReglesSurvie.ApparitionAcceptee(true, false, 150f, 60f, 120f), "refusée");
+        // Caps GTA : 0 = nord (+Y), 90 = ouest (-X), 180 = sud, 270 = est.
+        Verifier("cap vers le nord = 0", Math.Abs(ReglesSurvie.CapVers(0f, 0f, 0f, 50f)) < 0.01f, ReglesSurvie.CapVers(0f, 0f, 0f, 50f).ToString());
+        Verifier("cap vers l'ouest = 90", Math.Abs(ReglesSurvie.CapVers(0f, 0f, -50f, 0f) - 90f) < 0.01f, ReglesSurvie.CapVers(0f, 0f, -50f, 0f).ToString());
+        Verifier("cap vers l'est = 270", Math.Abs(ReglesSurvie.CapVers(0f, 0f, 50f, 0f) - 270f) < 0.01f, ReglesSurvie.CapVers(0f, 0f, 50f, 0f).ToString());
+        // Route nord-sud, joueur au sud du flic : le flic doit regarder le sud, quel que soit le sens rendu par le jeu.
+        Verifier("sens de la route : retourné vers le joueur (0 → 180)", Math.Abs(ReglesSurvie.CapDeRouteVers(0f, 0f, 100f, 0f, 0f) - 180f) < 0.01f,
+            ReglesSurvie.CapDeRouteVers(0f, 0f, 100f, 0f, 0f).ToString());
+        Verifier("sens de la route : déjà vers le joueur, gardé (180)", Math.Abs(ReglesSurvie.CapDeRouteVers(180f, 0f, 100f, 0f, 0f) - 180f) < 0.01f,
+            ReglesSurvie.CapDeRouteVers(180f, 0f, 100f, 0f, 0f).ToString());
+
         // Champ de la caméra : lacet 0 = elle regarde le nord (+Y), lacet 90 = l'ouest.
         Verifier("caméra : droit devant, dans le champ", ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 0f, 0f, 80f, 0f, 60f), "hors champ");
         Verifier("caméra : derrière, hors champ", !ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 0f, 0f, -80f, 0f, 60f), "dans le champ");
@@ -276,14 +296,19 @@ static class TestsPlugin
         Verifier("caméra : tournée à l'ouest, le nord est hors champ", !ReglesSurvie.DansLeChamp(0f, 0f, 0f, 0f, 90f, 0f, 80f, 0f, 60f), "dans le champ");
 
         // Recycler un flic (le « ping out / ping in » de Driver 2) : jamais sous ses yeux.
-        Verifier("recyclage : jamais à la vue du joueur", ReglesSurvie.RaisonDeRecycler(true, 500f, 99999, true, 150f, 2500) == null, "recyclé");
-        Verifier("recyclage : semé à 160 m hors champ", ReglesSurvie.RaisonDeRecycler(false, 160f, 0, false, 150f, 2500) == "semé",
-            ReglesSurvie.RaisonDeRecycler(false, 160f, 0, false, 150f, 2500));
-        Verifier("recyclage : planté 2,5 s hors champ", ReglesSurvie.RaisonDeRecycler(false, 60f, 2500, false, 150f, 2500) == "planté",
-            ReglesSurvie.RaisonDeRecycler(false, 60f, 2500, false, 150f, 2500));
-        Verifier("recyclage : retourné ou à l'eau hors champ", ReglesSurvie.RaisonDeRecycler(false, 20f, 0, true, 150f, 2500) == "retourné ou à l'eau",
-            ReglesSurvie.RaisonDeRecycler(false, 20f, 0, true, 150f, 2500));
-        Verifier("recyclage : en pleine chasse, non", ReglesSurvie.RaisonDeRecycler(false, 60f, 1000, false, 150f, 2500) == null, "recyclé");
+        // RaisonDeRecycler(visible, distance, derrière le joueur ?, plantée ms, retourné/à l'eau, semé derrière > 120 m, semé partout > 200 m, plantée max)
+        Verifier("recyclage : jamais à la vue du joueur", ReglesSurvie.RaisonDeRecycler(true, 500f, true, 99999, true, 120f, 200f, 2500) == null, "recyclé");
+        Verifier("recyclage : semé, 130 m derrière hors champ", ReglesSurvie.RaisonDeRecycler(false, 130f, true, 0, false, 120f, 200f, 2500) == "semé",
+            ReglesSurvie.RaisonDeRecycler(false, 130f, true, 0, false, 120f, 200f, 2500));
+        Verifier("recyclage : 170 m DEVANT, il arrive sur lui : on le laisse", ReglesSurvie.RaisonDeRecycler(false, 170f, false, 0, false, 120f, 200f, 2500) == null,
+            ReglesSurvie.RaisonDeRecycler(false, 170f, false, 0, false, 120f, 200f, 2500));
+        Verifier("recyclage : semé à plus de 200 m, même devant", ReglesSurvie.RaisonDeRecycler(false, 210f, false, 0, false, 120f, 200f, 2500) == "semé",
+            ReglesSurvie.RaisonDeRecycler(false, 210f, false, 0, false, 120f, 200f, 2500));
+        Verifier("recyclage : planté 2,5 s hors champ", ReglesSurvie.RaisonDeRecycler(false, 60f, false, 2500, false, 120f, 200f, 2500) == "planté",
+            ReglesSurvie.RaisonDeRecycler(false, 60f, false, 2500, false, 120f, 200f, 2500));
+        Verifier("recyclage : retourné ou à l'eau hors champ", ReglesSurvie.RaisonDeRecycler(false, 20f, true, 0, true, 120f, 200f, 2500) == "retourné ou à l'eau",
+            ReglesSurvie.RaisonDeRecycler(false, 20f, true, 0, true, 120f, 200f, 2500));
+        Verifier("recyclage : en pleine chasse, non", ReglesSurvie.RaisonDeRecycler(false, 60f, true, 1000, false, 120f, 200f, 2500) == null, "recyclé");
 
         // Conduite au contact (le « batter » de Driver 2) : r = joueur - flic, w = vitesse joueur - vitesse flic.
         float t = ReglesSurvie.TempsDInterception(-2f, 30f, 0f, -10f, 1f, 2f);

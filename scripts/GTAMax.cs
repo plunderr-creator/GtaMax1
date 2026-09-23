@@ -559,7 +559,7 @@ namespace GTAMax
             int intervalle = 3000, maxVoitures = 8, maxAttente = 20, rattrapages = 3;
             int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0, renfort = 1;
             int maxFlics = 4, dureeS = 60, indestructibles = 1;
-            float distanceRenforts = 0f, rayonSurvie = 80f;
+            float distanceRenforts = 0f, rayonSurvie = 60f;
             float distance = 20f, bonus = 40f;
             try
             {
@@ -601,10 +601,10 @@ namespace GTAMax
             {
                 maxFlics = Regles.Borne(maxFlics, 1, 6);
                 dureeS = Regles.Borne(dureeS, 10, 600);
-                rayonSurvie = Regles.Borne(rayonSurvie, 50f, 200f);
+                rayonSurvie = Regles.Borne(rayonSurvie, 40f, 200f);
                 survie = new Survie(journal, dossierScripts, GereParEls, modeles, maxFlics, dureeS, rayonSurvie, bonusMoteur, indestructibles != 0);
                 journal.Info("Mode : survie (façon Driver 2) — " + maxFlics + " flics max, 1 de plus par cadeau, poursuite jusqu'à "
-                    + dureeS + " s après le dernier cadeau, apparition à " + rayonSurvie + " m hors de vue, flics "
+                    + dureeS + " s après le dernier cadeau ; joueur rapide : flics DEVANT sur sa route ; sinon à " + rayonSurvie + " m hors de vue ; flics "
                     + (indestructibles != 0 ? "indestructibles" : "destructibles") + ", moteur +" + bonusMoteur + " %, modèles " + string.Join(", ", modeles));
                 return;
             }

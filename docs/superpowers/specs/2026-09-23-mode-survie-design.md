@@ -109,3 +109,34 @@ toutes les 10 s).
 
 Chronomètre à l'écran en continu (il faudrait dessiner à chaque image : le
 script tourne toutes les 100 ms), densité de la circulation, barrages.
+
+## Retour du test en jeu n°1 (2026-09-23, 21:37-21:39)
+
+**Journal** : joueur à 144-233 km/h (voiture add-on `cupra22f`). 63 recyclages
+en 1 min 45, jusqu'à 3 par seconde ; les flics posés derrière (50-120 m) ou sur
+les côtés (65-123 m) étaient « semés » 1 à 2 s plus tard ; 12 « retourné ou à
+l'eau » : le rattrapage invisible les poussait à 234 km/h. Aucun contact.
+
+**Crash** : `GTA5.exe+0x10078DC`, lecture de `0xFFFFFFFFFFFFFFFF`, dans le code
+du jeu (aucune frame du plugin, « No Active scrThread »). Les 32 minidumps de
+`%LOCALAPPDATA%\Rockstar Games\GTAV\CrashLogs` montrent 22 crashs AVANT
+l'installation de GTA Max (21-22/09), surtout `ERR_MEM_EMBEDDEDALLOC_GUARD_*`
+/ `_FREE_2` (mémoire du jeu corrompue, typique des add-ons), et 5 des 6
+signatures des crashs pendant les tests GTA Max existaient déjà sans lui. La
+poursuite (vitesse, streaming) le fait tomber plus tôt ; la cause est côté mods.
+
+**Corrections** :
+- Joueur rapide (> 54 km/h) : les flics viennent **devant**, sur la route qu'il
+  va prendre (`FIND_SPAWN_POINT_IN_DIRECTION`), à 3 s de lui (90 à 170 m),
+  tournés vers lui ; visibles seulement au loin (≥ 120 m) sinon cachés/hors
+  champ ; à défaut derrière, sur sa route (60 m).
+- Sens de la route toujours retourné vers le joueur (`CapDeRouteVers`) : le jeu
+  peut rendre le sens de la chaussée d'en face.
+- « Semé » = plus de 120 m **derrière**, ou plus de 200 m partout (un flic posé
+  devant à 170 m n'est plus recyclé aussitôt).
+- Un même flic replacé au plus une fois toutes les 3 s ; 1 recyclage / 0,75 s au plus.
+- Rattrapage invisible plafonné à 180 km/h, seulement bien aligné (±25°) et
+  4 roues au sol ; coup d'accélérateur au contact jamais « à la baisse ».
+- Rayon autour d'un joueur lent : 80 → 60 m.
+- Journal : contrôle 2 s après chaque pose (« se rapproche » ou « S'ÉLOIGNE »),
+  contacts par flic et au total.

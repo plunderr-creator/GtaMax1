@@ -542,7 +542,7 @@ namespace GTAMax
             string liste = MODELES_DEFAUT, mode = "etoiles";
             int intervalle = 3000, maxVoitures = 8, maxAttente = 20, rattrapages = 3;
             int parCadeau = 1, maxEtoiles = 3, tenueS = 45, tirs = 0, helicos = 0, renfort = 1;
-            float distanceRenforts = 60f;
+            float distanceRenforts = 0f;
             float distance = 20f, bonus = 40f;
             try
             {
@@ -576,11 +576,13 @@ namespace GTAMax
             tirsAutorises = tirs != 0;
             helicosAutorises = helicos != 0;
             renfortParCadeau = renfort != 0;
-            distanceRenfortsM = Regles.Borne(distanceRenforts, 30f, 300f);
+            // 0 = dispatch du jeu intact (défaut depuis le crash du 2026-09-23, 2 s après
+            // un renfort à 3 étoiles avec renforts à 60 m et cadence ×4).
+            distanceRenfortsM = distanceRenforts <= 0f ? 0f : Regles.Borne(distanceRenforts, 30f, 300f);
             journal.Info("Mode : " + (modeEtoiles && modeVoitures ? "les deux" : modeEtoiles ? "étoiles" : "voitures")
                 + (modeEtoiles ? " — +" + etoilesParCadeau + " étoile(s) par cadeau, " + etoilesMax + " max, tenue " + (tenueMs / 1000)
                     + " s, police " + (tirsAutorises ? "armée" : "SANS armes") + ", hélicos " + (helicosAutorises ? "oui" : "NON")
-                    + ", renforts du jeu à " + distanceRenfortsM + " m" + (renfortParCadeau ? ", + 1 renfort derrière par cadeau" : "") : ""));
+                    + (distanceRenfortsM > 0f ? ", renforts du jeu à " + distanceRenfortsM + " m (cadence ×4)" : ", dispatch du jeu intact") + (renfortParCadeau ? ", + 1 renfort derrière par cadeau" : "") : ""));
             fileSpawn = new FileSpawn<DemandeSpawn>(Regles.Borne(intervalle, 500, 60000), Regles.Borne(maxAttente, 1, 200), AGE_MAX_DEMANDE_MS);
             parc = new Parc<UnitePolice>(Regles.Borne(maxVoitures, 1, 30));
             journal.Info("Réglages : modèles " + string.Join(", ", modeles) + " ; " + distanceM + " m derrière ; 1 voiture / "
@@ -715,8 +717,11 @@ namespace GTAMax
                     Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_POLICE, false);
                     Function.Call(Hash.ENABLE_DISPATCH_SERVICE, DISPATCH_HELICO_SWAT, false);
                 }
-                Function.Call(Hash.SET_DISPATCH_IDEAL_SPAWN_DISTANCE, distanceRenfortsM);
-                Function.Call(Hash.SET_DISPATCH_TIME_BETWEEN_SPAWN_ATTEMPTS_MULTIPLIER, DISPATCH_CADENCE);
+                if (distanceRenfortsM > 0f)
+                {
+                    Function.Call(Hash.SET_DISPATCH_IDEAL_SPAWN_DISTANCE, distanceRenfortsM);
+                    Function.Call(Hash.SET_DISPATCH_TIME_BETWEEN_SPAWN_ATTEMPTS_MULTIPLIER, DISPATCH_CADENCE);
+                }
                 dispatchModifie = true;
             }
 

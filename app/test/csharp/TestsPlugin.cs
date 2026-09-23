@@ -188,11 +188,17 @@ static class TestsPlugin
         Verifier("plantée : au contact après une percussion, non", !Regles.EstPlantee(0f, 5f, 2f, 12f), "plantée");
         Verifier("plantée : elle roule, non", !Regles.EstPlantee(15f, 40f, 2f, 12f), "plantée");
 
-        // Façons de conduire : la poursuite d'abord (la mission RAM freinait les voitures au test en jeu).
-        int s0 = 0, s1 = Regles.StrategieSuivante(s0), s2 = Regles.StrategieSuivante(s1);
-        Verifier("façons de conduire : poursuivre → foncer → poursuivre",
-            Regles.STRATEGIES[s0] == "poursuivre" && Regles.STRATEGIES[s1] == "foncer" && s2 == 0,
-            s0 + "," + s1 + "," + s2);
+        // Traque : viser où le joueur SERA.
+        Verifier("anticipation : 30 m à 30 m/s → 1 s", Math.Abs(Regles.Anticipation(30f, 30f) - 1f) < 1e-4, Regles.Anticipation(30f, 30f) + " s");
+        Verifier("anticipation : à l'arrêt, la vitesse plancher (10 m/s) évite la division par 0", Math.Abs(Regles.Anticipation(5f, 0f) - 0.5f) < 1e-4, Regles.Anticipation(5f, 0f) + " s");
+        Verifier("anticipation : plafonnée à 1,5 s même de loin", Regles.Anticipation(500f, 20f) == 1.5f, Regles.Anticipation(500f, 20f) + " s");
+        Verifier("style : de loin, suit les routes sans contourner le joueur",
+            Regles.StyleConduite(100f, 40f) == Regles.CONDUITE_TRAQUE && (Regles.CONDUITE_TRAQUE & 64) != 0 && (Regles.CONDUITE_TRAQUE & 1) == 0,
+            Regles.StyleConduite(100f, 40f).ToString());
+        Verifier("style : au contact, ligne droite forcée", (Regles.StyleConduite(25f, 40f) & Regles.CONDUITE_LIGNE_DROITE) != 0, "");
+        Verifier("face au joueur : droit devant", Regles.EstFaceA(0f, 1f, 0f, 10f, 0.87f), "non");
+        Verifier("face au joueur : à 45°, non", !Regles.EstFaceA(0f, 1f, 10f, 10f, 0.87f), "oui");
+        Verifier("face au joueur : dans le dos, non", !Regles.EstFaceA(0f, 1f, 0f, -10f, 0.87f), "oui");
 
         // Semée : loin ET hors écran (sinon on la verrait disparaître).
         Verifier("semée : à 150 m hors écran", Regles.EstSemee(150f, false, 120f), "non semée");

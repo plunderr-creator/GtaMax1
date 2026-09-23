@@ -299,11 +299,38 @@ namespace GTAMax
             return sortie;
         }
 
-        // Façons de conduire, essayées tour à tour quand une voiture reste plantée.
-        // « poursuivre » d'abord : au test en jeu du 2026-09-23, la mission RAM
-        // (« percuter ») freinait les voitures à 0-27 km/h, la poursuite du jeu roulait.
-        public static readonly string[] STRATEGIES = { "poursuivre", "foncer" };
-        public static int StrategieSuivante(int strategie) { return (Math.Max(0, strategie) + 1) % STRATEGIES.Length; }
+        // TRAQUE — leçons des tests en jeu du 2026-09-23 : la mission RAM freinait
+        // les voitures (0-27 km/h), la poursuite du jeu (TASK_VEHICLE_CHASE) les
+        // laissait plantées, et « rouler vers la position du joueur » réémis toutes
+        // les 4 s s'arrêtait sur une position périmée. On vise donc l'endroit où le
+        // joueur SERA, et l'ordre est redonné chaque seconde.
+
+        // Anticipation (secondes) : le temps qu'il faut au policier pour couvrir la
+        // distance, borné à 1,5 s. Au contact, presque rien : on vise le joueur lui-même.
+        public static float Anticipation(float distanceM, float vitesseChasseurMs)
+        {
+            return Math.Min(1.5f, Math.Max(0f, distanceM) / Math.Max(10f, vitesseChasseurMs));
+        }
+
+        // Style de conduite : de base, contourne voitures et obstacles, prend les
+        // voies d'en face, change de file, ne s'arrête ni aux feux ni pour personne,
+        // et NE contourne PAS le joueur (bit 64). Au contact (< 40 m), ligne droite
+        // forcée (16777216) : il fonce dessus au lieu de suivre la route.
+        public const int CONDUITE_TRAQUE = 4 | 32 | 64 | 512 | 262144 | 524288;
+        public const int CONDUITE_LIGNE_DROITE = 16777216;
+        public static int StyleConduite(float distanceM, float distanceLigneDroiteM)
+        {
+            return distanceM < distanceLigneDroiteM ? (CONDUITE_TRAQUE | CONDUITE_LIGNE_DROITE) : CONDUITE_TRAQUE;
+        }
+
+        // Le policier regarde-t-il le joueur (à cosMin près) ? Produit scalaire entre
+        // son « avant » et la direction du joueur, tous deux ramenés au plan.
+        public static bool EstFaceA(float avantX, float avantY, float versX, float versY, float cosMin)
+        {
+            double na = Math.Sqrt(avantX * avantX + avantY * avantY), nv = Math.Sqrt(versX * versX + versY * versY);
+            if (na < 1e-6 || nv < 1e-6) return false;
+            return (avantX * versX + avantY * versY) / (na * nv) >= cosMin;
+        }
 
         // Semée = loin du joueur ET hors de l'écran : on peut la faire réapparaître
         // derrière lui sans qu'il la voie disparaître.
@@ -407,12 +434,10 @@ namespace GTAMax
         public string Donateur;
         public int NeeA;             // Game.GameTime de l'apparition
         public int MorteA;           // Game.GameTime de la mort de la voiture (0 = vivante)
-        public int DernierOrdreA;
         public int LoinDepuis;       // Game.GameTime depuis lequel elle est distancée (0 = au contact)
         public int SemeeDepuis;      // Game.GameTime depuis lequel elle est semée (loin et hors écran)
         public int Rattrapages;      // réapparitions derrière le joueur déjà faites
         public int ImmobileDepuis;   // Game.GameTime depuis lequel elle ne roule plus loin du joueur (0 = elle roule)
-        public int Strategie;        // index dans Regles.STRATEGIES : façon de conduire en cours
         public bool DiagnostiqueFait;
     }
 
@@ -423,11 +448,14 @@ namespace GTAMax
         const int CHARGEMENT_MAX_MS = 5000;        // modèle qui ne se charge pas : on abandonne cette apparition
         const int EPAVE_MS = 8000;                 // une épave reste visible 8 s puis disparaît
         const int ENTRETIEN_MS = 1000;             // suivi des poursuites et du nettoyage
-        const int ORDRE_MS = 4000;                 // « foncer » est réémis toutes les 4 s (la cible bouge)
+        const float DISTANCE_LIGNE_DROITE_M = 40f; // plus près que ça, elle fonce en ligne droite sur le joueur
+        const float DISTANCE_COUP_M = 15f;         // plus près que ça, face à lui : coup d'accélérateur pour percuter
+        const float COS_FACE = 0.87f;              // « face au joueur » : à 30° près
+        const float ELAN_COUP_MS = 6f;             // le coup d'accélérateur : sa vitesse + 6 m/s (≈ 22 km/h)
         const float DISTANCE_SEMEE_M = 120f;       // plus loin que ça, hors écran…
         const int SEMEE_MS = 2000;                 // …depuis 2 s : elle réapparaît derrière le joueur
         const float RECUL_RATTRAPAGE_M = 15f;      // la réapparition se fait un peu plus loin que l'apparition (moins visible)
-        const int IMMOBILE_MS = 3000;              // plantée 3 s loin du joueur : on change de façon de conduire
+        const int IMMOBILE_MS = 3000;              // plantée 3 s loin du joueur et hors écran : elle réapparaît derrière lui
         const float VITESSE_IMMOBILE = 2f;         // m/s : en dessous, elle ne roule pas
         const float DISTANCE_CONTACT_M = 12f;      // au contact du joueur, être à l'arrêt est normal (elle vient de percuter)
         const int DIAGNOSTIC_MS = 5000;            // une ligne de diagnostic 5 s après l'apparition
@@ -436,16 +464,8 @@ namespace GTAMax
         const float PLAFOND_DISTANCE_M = 60f;
         const string PED_POLICE = "s_m_y_cop_01";  // tenue Police Nationale posée sur ce ped
         const string MODELES_DEFAUT = "pranger";
-        // SET_TASK_VEHICLE_CHASE_BEHAVIOR_FLAG : on interdit tout ce qui n'est pas
-        // coller au joueur et le percuter (bloquer, se ranger à côté, rouler devant),
-        // et on active la percussion continue.
-        const int CHASE_NE_BLOQUE_PAS = 1, CHASE_NE_BLOQUE_PAS_EN_POURSUITE = 2, CHASE_NE_ROULE_PAS_DEVANT = 64,
-                  CHASE_PERCUSSION_CONTINUE = 128, CHASE_NE_SE_RANGE_PAS = 256, CHASE_NE_SE_RANGE_PAS_DEVANT = 512;
-        const float VITESSE_PERCUTER = 50f;        // m/s (180 km/h) : plafonnée par la voiture elle-même
-        // Style de conduite de la percussion : contourne voitures et obstacles, prend
-        // les voies d'en face, change de file… et NE contourne PAS le joueur (64).
-        const int CONDUITE_PERCUTER = 4 | 32 | 64 | 512 | 262144 | 524288;
-        const int CONDUITE_NORMALE = 786603;
+        const float VITESSE_TRAQUE = 60f;          // m/s demandés : c'est la voiture qui plafonne
+        const int CONDUITE_NORMALE = 786603;       // voiture rendue au jeu : balade tranquille
         const int FLAG_PEUT_TRAVERSER_PARE_BRISE = 32;   // SET_PED_CONFIG_FLAG : coupé, le policier reste au volant après un choc
 
         readonly Journal journal;
@@ -686,7 +706,7 @@ namespace GTAMax
                 ModeleHash = v.Model.Hash, Nom = c.Nom, Donateur = c.Demande.Donateur,
                 NeeA = Game.GameTime,
             };
-            DonnerOrdre(u, joueur, true);
+            DonnerOrdre(u, joueur);
 
             // Voiture et policier restent « à nous » (persistants) TANT QU'ILS
             // POURSUIVENT : marqués non persistants dès l'apparition, le jeu les
@@ -757,34 +777,28 @@ namespace GTAMax
             Function.Call(Hash.SET_PED_CONFIG_FLAG, p, FLAG_PEUT_TRAVERSER_PARE_BRISE, false);   // il percute : qu'il ne passe pas par le pare-brise
         }
 
-        // Deux façons de conduire (Regles.STRATEGIES), en voiture comme à pied,
-        // essayées tour à tour si la voiture reste plantée (voir Entretenir) :
-        //  poursuivre — la poursuite du jeu (TASK_VEHICLE_CHASE) réglée pour coller
-        //               et percuter : ni blocage, ni rangement à côté, ni devant,
-        //               percussion continue, distance de poursuite nulle ;
-        //  foncer     — rouler droit sur sa position du moment ; réémis toutes les 4 s.
-        void DonnerOrdre(UnitePolice u, Ped joueur, bool forcer)
+        // TRAQUE, redonnée à chaque entretien (1 s) : rouler vers l'endroit où le
+        // joueur SERA (position + vitesse × anticipation), à fond, sans le
+        // contourner ; au contact (< 40 m), en ligne droite. Face à lui à moins de
+        // 15 m et pas plus vite que lui : coup d'accélérateur pour percuter.
+        void DonnerOrdre(UnitePolice u, Ped joueur)
         {
             Ped c = u.Conducteur;
             if (c == null || !c.Exists() || c.IsDead || !u.Voiture.Exists() || !c.IsInVehicle(u.Voiture)) return;
-            int maintenant = Game.GameTime;
-            string facon = Regles.STRATEGIES[u.Strategie];
-            if (!forcer && (facon == "poursuivre" || maintenant - u.DernierOrdreA < ORDRE_MS)) return;
-            if (facon == "poursuivre")
-            {
-                Function.Call(Hash.TASK_VEHICLE_CHASE, c, joueur);
-                foreach (int drapeau in new[] { CHASE_NE_BLOQUE_PAS, CHASE_NE_BLOQUE_PAS_EN_POURSUITE, CHASE_NE_ROULE_PAS_DEVANT,
-                                                CHASE_PERCUSSION_CONTINUE, CHASE_NE_SE_RANGE_PAS, CHASE_NE_SE_RANGE_PAS_DEVANT })
-                    Function.Call(Hash.SET_TASK_VEHICLE_CHASE_BEHAVIOR_FLAG, c, drapeau, true);
-                Function.Call(Hash.SET_TASK_VEHICLE_CHASE_IDEAL_PURSUIT_DISTANCE, c, 0f);
-            }
-            else
-            {
-                Vector3 p = joueur.Position;
-                Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, c, u.Voiture, p.X, p.Y, p.Z, VITESSE_PERCUTER, 1,
-                    u.ModeleHash, CONDUITE_PERCUTER, 1f, 1f);
-            }
-            u.DernierOrdreA = maintenant;
+            Vehicle vj = joueur.IsInVehicle() ? joueur.CurrentVehicle : null;
+            Vector3 vitesseJoueur = vj != null ? vj.Velocity : joueur.Velocity;
+            Vector3 versJoueur = joueur.Position - u.Voiture.Position;
+            float distance = versJoueur.Length();
+            float anticipe = Regles.Anticipation(distance, u.Voiture.Speed);
+            Vector3 vise = joueur.Position + vitesseJoueur * anticipe;
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, c, u.Voiture, vise.X, vise.Y, vise.Z, VITESSE_TRAQUE, 1,
+                u.ModeleHash, Regles.StyleConduite(distance, DISTANCE_LIGNE_DROITE_M), 0.5f, 1f);
+
+            float vitesseCible = vitesseJoueur.Length();
+            Vector3 avant = u.Voiture.ForwardVector;
+            if (distance < DISTANCE_COUP_M && u.Voiture.Speed < vitesseCible + 3f
+                && Regles.EstFaceA(avant.X, avant.Y, versJoueur.X, versJoueur.Y, COS_FACE))
+                Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, u.Voiture, Math.Min(vitesseCible + ELAN_COUP_MS, 60f));
         }
 
         // ─── ENTRETIEN (1 fois par seconde) ───────────────────────────────
@@ -836,9 +850,13 @@ namespace GTAMax
                 bool visible = Function.Call<bool>(Hash.IS_ENTITY_ON_SCREEN, u.Voiture);
                 if (!Regles.EstSemee(distance, visible, DISTANCE_SEMEE_M)) u.SemeeDepuis = 0;
                 else if (u.SemeeDepuis == 0) u.SemeeDepuis = Math.Max(1, maintenant);
-                else if (maintenant - u.SemeeDepuis >= SEMEE_MS && u.Rattrapages < rattrapagesMax)
+                if (!Regles.EstPlantee(u.Voiture.Speed, distance, VITESSE_IMMOBILE, DISTANCE_CONTACT_M)) u.ImmobileDepuis = 0;
+                else if (u.ImmobileDepuis == 0) u.ImmobileDepuis = Math.Max(1, maintenant);
+                bool semee = u.SemeeDepuis != 0 && maintenant - u.SemeeDepuis >= SEMEE_MS;
+                bool plantee = !visible && u.ImmobileDepuis != 0 && maintenant - u.ImmobileDepuis >= IMMOBILE_MS;
+                if ((semee || plantee) && u.Rattrapages < rattrapagesMax)
                 {
-                    Rattraper(u, joueur);
+                    Rattraper(u, joueur, semee ? "semée" : "plantée hors écran");
                     continue;
                 }
                 if (distance <= DISTANCE_LACHER_M) u.LoinDepuis = 0;
@@ -850,38 +868,24 @@ namespace GTAMax
                 Lacher(u);
             }
 
-            // 6. Diagnostic (une ligne, 5 s après l'apparition) et voitures plantées :
-            // 3 s sans rouler loin du joueur → façon de conduire suivante.
+            // 6. Traque redonnée à chaque entretien ; une ligne de diagnostic 5 s
+            // après l'apparition.
             foreach (UnitePolice u in parc.Unites)
             {
                 if (u.MorteA != 0) continue;
-                float vitesse = u.Voiture.Speed;
-                float distance = u.Voiture.Position.DistanceTo(joueur.Position);
                 if (!u.DiagnostiqueFait && maintenant - u.NeeA >= DIAGNOSTIC_MS)
                 {
                     u.DiagnostiqueFait = true;
-                    Diagnostiquer(u, vitesse, distance);
+                    Diagnostiquer(u, u.Voiture.Speed, u.Voiture.Position.DistanceTo(joueur.Position));
                 }
-                if (!Regles.EstPlantee(vitesse, distance, VITESSE_IMMOBILE, DISTANCE_CONTACT_M)) u.ImmobileDepuis = 0;
-                else if (u.ImmobileDepuis == 0) u.ImmobileDepuis = Math.Max(1, maintenant);
-                else if (maintenant - u.ImmobileDepuis > IMMOBILE_MS)
-                {
-                    string avant = Regles.STRATEGIES[u.Strategie];
-                    u.Strategie = Regles.StrategieSuivante(u.Strategie);
-                    u.ImmobileDepuis = 0;
-                    journal.Info("« " + u.Nom + " » plantée depuis 3 s à " + Math.Round(distance) + " m : « " + avant
-                        + " » → « " + Regles.STRATEGIES[u.Strategie] + " »");
-                    DonnerOrdre(u, joueur, true);
-                    continue;
-                }
-                DonnerOrdre(u, joueur, false);
+                DonnerOrdre(u, joueur);
             }
         }
 
-        // Semée : la voiture est replacée derrière le joueur (un peu plus loin qu'à
-        // l'apparition, pour qu'on la voie moins surgir), orientée vers lui et
-        // lancée à sa vitesse, puis la poursuite repart de zéro.
-        void Rattraper(UnitePolice u, Ped joueur)
+        // Semée ou plantée hors écran : la voiture est replacée derrière le joueur
+        // (un peu plus loin qu'à l'apparition, pour qu'on la voie moins surgir),
+        // orientée vers lui et lancée à sa vitesse, puis la traque reprend.
+        void Rattraper(UnitePolice u, Ped joueur, string raison)
         {
             Vector3 position = PointDApparition(joueur, Math.Min(distanceM + RECUL_RATTRAPAGE_M, PLAFOND_DISTANCE_M));
             float cap = (joueur.Position - position).ToHeading();
@@ -892,9 +896,8 @@ namespace GTAMax
             Lancer(u.Voiture, vj != null ? vj.Speed : 0f);
             u.Rattrapages++;
             u.SemeeDepuis = 0; u.LoinDepuis = 0; u.ImmobileDepuis = 0;
-            u.Strategie = 0;
-            DonnerOrdre(u, joueur, true);
-            journal.Info("« " + u.Nom + " » semée : réapparaît derrière le joueur (" + u.Rattrapages + "/" + rattrapagesMax + ")");
+            DonnerOrdre(u, joueur);
+            journal.Info("« " + u.Nom + " » " + raison + " : réapparaît derrière le joueur (" + u.Rattrapages + "/" + rattrapagesMax + ")");
         }
 
         // Ce que le journal ne disait pas quand le fourgon CRS restait sur place.
@@ -903,8 +906,7 @@ namespace GTAMax
             Ped c = u.Conducteur;
             bool auVolant = c != null && c.Exists() && !c.IsDead && c.IsInVehicle(u.Voiture);
             journal.Info("Diagnostic « " + u.Nom + " » à 5 s : " + Math.Round(vitesse * 3.6f) + " km/h, "
-                + Math.Round(distance) + " m du joueur, façon « " + Regles.STRATEGIES[u.Strategie] + " », au volant : "
-                + (auVolant ? "oui" : "NON")
+                + Math.Round(distance) + " m du joueur, au volant : " + (auVolant ? "oui" : "NON")
                 + ", moteur : " + (Function.Call<bool>(Hash.GET_IS_VEHICLE_ENGINE_RUNNING, u.Voiture) ? "oui" : "NON")
                 + ", 4 roues au sol : " + (Function.Call<bool>(Hash.IS_VEHICLE_ON_ALL_WHEELS, u.Voiture) ? "oui" : "NON")
                 + ", attend le sol : " + (Function.Call<bool>(Hash.IS_ENTITY_WAITING_FOR_WORLD_COLLISION, u.Voiture) ? "OUI" : "non"));

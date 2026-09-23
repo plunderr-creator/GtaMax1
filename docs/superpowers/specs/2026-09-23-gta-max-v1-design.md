@@ -246,3 +246,13 @@ moteur + vitesse de pointe +40 % (`MODIFY_VEHICLE_TOP_SPEED`, `BONUS_MOTEUR`),
 conduite « pilote » (`SET_DRIVER_RACING_MODIFIER`), carrosserie renforcée ;
 lancées à 115 % de la vitesse du joueur ; une voiture semée (plus de 120 m,
 hors écran, 2 s) réapparaît derrière le joueur, 3 fois au plus (`RATTRAPAGES`).
+
+Quatrième test : `TASK_VEHICLE_CHASE` avec les drapeaux « coller/percuter »
+laisse la voiture plantée (3 s à l'arrêt à 32 m, puis à 151 m) ; « foncer »
+roule (46 km/h, 15 m) mais visait une position vieille de 4 s et s'arrêtait
+dessus (plantée à 65 m) ; semée 3 fois en 42 s. → une seule conduite, la
+**traque** : `TASK_VEHICLE_DRIVE_TO_COORD` redonné chaque seconde vers
+l'endroit où le joueur SERA (position + vitesse × anticipation ≤ 1,5 s), à
+fond, sans le contourner, en ligne droite forcée sous 40 m ; face à lui sous
+15 m et pas plus vite que lui : coup d'accélérateur (+6 m/s) pour percuter.
+Une voiture plantée 3 s hors écran réapparaît aussi derrière le joueur.

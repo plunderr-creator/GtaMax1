@@ -29,7 +29,7 @@ function ttsNext(){
   a.play().catch(done);
 }
 
-// Bulle de la voix : pseudo, texte révélé mot par mot au rythme du son, barres au volume réel.
+// Icône mégaphone pendant la voix : grossit au volume réel (aucun texte affiché).
 let _voixCtx = null, _voixCache = null;
 function analyseur(a) {
   try {
@@ -43,31 +43,21 @@ function analyseur(a) {
 }
 function bulleVoix(d, a) {
   const boite = document.getElementById('voix');
-  const texte = document.getElementById('voix-texte');
-  const barres = boite.querySelectorAll('.voix-barres i');
   clearTimeout(_voixCache);
-  document.getElementById('voix-pseudo').textContent = String(d.viewer || 'Chat');
-  const mots = String(d.text || '').split(/\s+/).filter(Boolean);
-  texte.replaceChildren(...mots.map(m => element('span', 'mot', m + ' ')));
   boite.classList.add('visible');
   const an = analyseur(a), niveaux = an && new Uint8Array(an.frequencyBinCount);
   boite.classList.toggle('sans-analyse', !an);
   let fini = false;
   (function image() {
-    if (fini) return;
-    const k = a.duration > 0 ? a.currentTime / a.duration : 0;
-    const vus = Math.ceil(k * mots.length * 1.08);
-    texte.childNodes.forEach((m, i) => m.classList.toggle('dit', i < vus));
-    if (an) {
-      an.getByteFrequencyData(niveaux);
-      barres.forEach((b, i) => { b.style.transform = 'scaleY(' + Math.max(.15, niveaux[i * 3 + 1] / 255) + ')'; });
-    }
+    if (fini || !an) return;
+    an.getByteFrequencyData(niveaux);
+    let max = 0; for (let i = 1; i < 16; i++) max = Math.max(max, niveaux[i]);
+    boite.style.setProperty('--niveau', (max / 255).toFixed(2));
     requestAnimationFrame(image);
   })();
   return { fin() {
     fini = true;
-    texte.childNodes.forEach(m => m.classList.add('dit'));
-    barres.forEach(b => { b.style.transform = ''; });
+    boite.style.removeProperty('--niveau');
     // Pause courte : si un autre message suit, la bulle reste ouverte et enchaîne.
     _voixCache = setTimeout(() => { boite.classList.remove('visible'); }, 600);
   } };

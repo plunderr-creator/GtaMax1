@@ -3,8 +3,7 @@
 
    COMMENT
    Le plugin tourne dans GTA V, pas ici. Mais sa logique pure (parseur de ligne,
-   péremption, consommation de la file, registre d'actions, file de spawn, parc
-   de 8, règles) est isolée hors du bloc `#if !TESTS_SANS_JEU`. On compile donc
+   péremption, consommation de la file et règles de poursuite) est isolée hors du bloc `#if !TESTS_SANS_JEU`. On compile donc
    GTAMax.cs avec /define:TESTS_SANS_JEU + un harnais C# (test/csharp/
    TestsPlugin.cs), on lance l'exe, et chaque ligne « OK … / ECHEC … » devient
    un sous-test.
@@ -41,7 +40,7 @@ function harnais() {
 }
 test.after(() => { if (exe) { try { fs.unlinkSync(exe); } catch {} } });
 
-test('plugin C# : logique pure (parseur, file, registre, spawn, parc)', { skip: SANS_CSC }, async (t) => {
+test('plugin C# : logique pure (parseur, file et poursuite)', { skip: SANS_CSC }, async (t) => {
   const r = spawnSync(harnais(), [], { encoding: 'utf8', windowsHide: true });
   const lignes = String(r.stdout || '').split(/\r?\n/).filter(l => /^(OK|ECHEC) /.test(l));
   assert.ok(lignes.length >= 35, 'trop peu de résultats :\n' + r.stdout + r.stderr);

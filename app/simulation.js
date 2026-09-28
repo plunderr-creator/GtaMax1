@@ -3,9 +3,8 @@
  *
  * TikTok n'envoie rien tant qu'on n'est pas en live. On fabrique donc des
  * trames de la MÊME forme que tiktok-live-connector et on les donne aux VRAIS
- * handlers (evenements.js) avec { test: true } : voix, commandes « ! »,
- * alerte, merci et SPAWN_POLICE suivent exactement le chemin d'un live, sans
- * jamais toucher au roster.
+ * handlers (evenements.js) avec { test: true } : voix,
+ * alerte, merci et SPAWN_POLICE suivent exactement le chemin d'un live.
  *
  *   trameChat / trameDon  → un message / un cadeau à la demande (setup)
  *   creerSimulation       → le « live simulé » : de faux viewers qui écrivent
@@ -46,12 +45,13 @@ const FAUX_VIEWERS = [
 const MESSAGES = [
   'wesh la police arrive 😂', 'fonce fonce fonce !', 'tu vas te faire attraper', 'trop stylé le gyrophare',
   'GG', 'c\'est quelle voiture ?', 'la sirène française 🔥', 'envoie les flics !', 'tourne à gauche !!',
-  'salut tout le monde', '!aide', 'mdr', 'c\'est GTA 5 ?', 'ils vont te coincer', 'accélère !!!', 'bonne chance 🍀',
+  'salut tout le monde', 'bonjour', 'mdr', 'c\'est GTA 5 ?', 'ils vont te coincer', 'accélère !!!', 'bonne chance 🍀',
 ];
+const { MODELES } = require('./progression');   // chaque faux cadeau prend une voiture du catalogue au hasard
 const CADEAUX_SIMULES = ['Rose', 'Rose', 'Rose', 'Perfume', 'Hand Hearts', 'Galaxy'];   // la rose domine, comme en vrai
 
 const CHAT_MIN_MS = 5000,  CHAT_MAX_MS = 10000;
-const DON_MIN_MS  = 20000, DON_MAX_MS  = 40000;
+const DON_MIN_MS  = 10000, DON_MAX_MS  = 20000;
 
 /**
  * @param evenements { onChat(data, opts), onGift(data, opts) }  (evenements.js)
@@ -84,7 +84,7 @@ function creerSimulation({ evenements, maintenant = Date.now, planifier = setTim
   function tourDon() {
     if (tempsEcoule()) return;
     const [pseudo, nom] = pioche(FAUX_VIEWERS);
-    evenements.onGift(trameDon(pseudo, pioche(CADEAUX_SIMULES), 1 + Math.floor(hasard() * 3), nom), { test: true });
+    evenements.onGift(trameDon(pseudo, pioche(CADEAUX_SIMULES), 1 + Math.floor(hasard() * 3), nom), { test: true, voiture: pioche(MODELES) });
     plusTard(tourDon, DON_MIN_MS, DON_MAX_MS);
   }
 
@@ -92,7 +92,7 @@ function creerSimulation({ evenements, maintenant = Date.now, planifier = setTim
     if (actif) return false;
     actif = true;
     finA = maintenant() + dureeMaxMs;
-    log.log(`🧪 Live simulé démarré (${Math.round(dureeMaxMs / 60000)} min max) : faux messages toutes les 5-10 s, faux cadeaux toutes les 20-40 s.`);
+    log.log(`🧪 Live simulé démarré (${Math.round(dureeMaxMs / 60000)} min max) : faux messages toutes les 5-10 s, faux cadeaux toutes les 10-20 s.`);
     plusTard(tourChat, 1000, 2000);   // premier message tout de suite : on sait que ça marche
     plusTard(tourDon, 6000, 9000);    // premier cadeau vite aussi
     return true;

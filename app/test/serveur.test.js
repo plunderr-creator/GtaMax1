@@ -3,7 +3,7 @@
 
    COMMENT (même méthode que Final Max)
    Pas de mock : le serveur est lancé dans un dossier bac à sable (son propre
-   config.json, son propre data.json, un port libre, un faux dossier GTA V avec
+   config.json, un port libre, un faux dossier GTA V avec
    un GTA5.exe vide et un scripts\ vide), puis interrogé par HTTP et par
    WebSocket comme le ferait l'overlay OBS. node_modules est monté en jonction.
    Sans SESSION_ID, connectTikTok() rend la main tout de suite : aucun test ne
@@ -20,8 +20,8 @@ const { spawn } = require('node:child_process');
 const WebSocket = require('ws');
 
 const APP = path.join(__dirname, '..');
-const FICHIERS = ['server.js', 'tts.js', 'file-tts.js', 'gta-bridge.js', 'commandes-chat.js', 'evenements.js',
-  'persistance.js', 'roster.js', 'simulation.js', 'package.json', 'config.default.json',
+const FICHIERS = ['server.js', 'tts.js', 'file-tts.js', 'gta-bridge.js', 'evenements.js',
+  'simulation.js', 'progression.js', 'package.json', 'config.default.json',
   'overlay.html', 'overlay.js', 'overlay.css', 'setup.html',
   path.join('outils', 'plugin.js'), path.join('outils', 'lire-config.js')];
 
@@ -196,6 +196,15 @@ test('don de test : alerte sur l\'overlay ET SPAWN_POLICE dans la file du jeu', 
   } finally { ws.close(); }
 });
 
+test('don de test : voiture choisie dans le setup envoyée au jeu', async () => {
+  const fichier = path.join(jeu, 'scripts', 'gtamax_queue.txt');
+  fs.rmSync(fichier, { force: true });
+  const r = await requete('POST', '/api/test/don', { corps: { pseudo: 'vroum', voiture: 'rs3' } });
+  assert.strictEqual(r.code, 200, r.corps);
+  for (let i = 0; i < 50 && !fs.existsSync(fichier); i++) await new Promise(ok => setTimeout(ok, 20));
+  assert.match(fs.readFileSync(fichier, 'utf8'), /SPAWN_POLICE t=\d+ donateur=vroum cadeau=Rose voiture=rs3\n/);
+});
+
 // ── Tester sans live ──────────────────────────────────────────────────────
 
 async function attendreJournal(motif, max = 4000) {
@@ -212,11 +221,11 @@ const consommerFile = () => { const l = lignesFile(); try { fs.unlinkSync(path.j
 test('test sans live : message de chat → vrai handler (journal 🧪), message vide refusé', async () => {
   const r = await requete('POST', '/api/test/chat', { corps: { pseudo: 'Jean Test', message: 'bonjour la police' } });
   assert.strictEqual(r.code, 200, r.corps);
-  await attendreJournal(/🧪 💬 CHAT   Jean_Test : bonjour la police/);
+  await attendreJournal(/🧪 (💬|🔇) CHAT   Jean_Test : bonjour la police/);
   assert.strictEqual((await requete('POST', '/api/test/chat', { corps: { message: '   ' } })).code, 400);
 });
 
-test('test sans live : rafale de 3 → 3 alertes, 3 SPAWN_POLICE, roster intact', async () => {
+test('test sans live : rafale de 3 → 3 alertes, 3 SPAWN_POLICE, aucun historique créé', async () => {
   consommerFile();                                   // repartir d'une file vide
   const { ws, recus } = await ouvrirOverlay();
   try {
@@ -234,7 +243,7 @@ test('test sans live : rafale de 3 → 3 alertes, 3 SPAWN_POLICE, roster intact'
     assert.strictEqual(lignes.filter(l => /^SPAWN_POLICE t=\d+ donateur=bob cadeau=Galaxy$/.test(l)).length, 3, lignes.join('\n'));
   } finally { ws.close(); }
   const data = path.join(bac, 'data.json');
-  if (fs.existsSync(data)) assert.deepStrictEqual(JSON.parse(fs.readFileSync(data, 'utf8')).viewers, {});
+  assert.strictEqual(fs.existsSync(data), false);
 });
 
 test('test sans live : le délai est respecté', async () => {
@@ -255,7 +264,7 @@ test('test sans live : live simulé marche/arrêt, faux viewers dans le journal'
   assert.strictEqual(r.actif, true);
   const e = JSON.parse((await requete('GET', '/api/test/live')).corps);
   assert.ok(e.actif && e.resteMs > 0);
-  await attendreJournal(/🧪 💬 CHAT   \S+ : /, 4000);
+  await attendreJournal(/🧪 (💬|🔇) CHAT   \S+ : /, 4000);
   const s = JSON.parse((await requete('POST', '/api/test/live', { corps: { actif: false } })).corps);
   assert.strictEqual(s.actif, false);
   consommerFile();
@@ -277,6 +286,34 @@ test('WebSocket : une page d\'une autre origine ne peut pas s\'abonner', async (
 
 test('TTS : un id inconnu (évincé du cache) → 404 propre', async () => {
   assert.strictEqual((await requete('GET', '/api/tts/nexiste-pas')).code, 404);
+});
+
+test('progression : sauvegarde du jeu vers deux overlays, reconnexion sans rejouer les gains', async () => {
+  const fichier = path.join(jeu, 'scripts', 'GTAMax.points');
+  const a = await ouvrirOverlay(); let b;
+  try {
+    await attendre(a.recus, 'progression');
+    a.recus.length = 0;
+    fs.writeFileSync(fichier, 'YWxpY2U=:4\n');
+    await attendre(a.recus, 'progression');
+    a.recus.length = 0;
+    fs.writeFileSync(fichier, 'YWxpY2U=:5\n');
+    const gain = await attendre(a.recus, 'progression_gain');
+    assert.strictEqual(gain.gain, 1); assert.strictEqual(gain.niveau, 2);
+    assert.strictEqual(gain.nouveauNiveau, true);
+    b = await ouvrirOverlay();
+    const reprise = await attendre(b.recus, 'progression');
+    assert.strictEqual(reprise.joueurs[0].total, 5);
+    await dors(300);
+    assert.strictEqual(b.recus.filter(m => m.type === 'progression_gain').length, 0);
+    a.recus.length = 0; b.recus.length = 0;
+    fs.writeFileSync(fichier, 'YWxpY2U=:5:3:1:0:0:origine\n');
+    const achat = await attendre(a.recus, 'progression');
+    const achatB = await attendre(b.recus, 'progression');
+    assert.strictEqual(achat.joueurs[0].disponibles, 2);
+    assert.strictEqual(achatB.joueurs[0].total, 5);
+    assert.strictEqual(a.recus.filter(m => m.type === 'progression_gain').length, 0);
+  } finally { a.ws.close(); if (b) b.ws.close(); fs.unlinkSync(fichier); }
 });
 
 // Dernier du fichier : il pose un SESSION_ID (sans pseudo TikTok, donc sans

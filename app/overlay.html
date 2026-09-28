@@ -1,42 +1,28 @@
 <!DOCTYPE html>
 <html lang="fr">
-<!--
-  GTA MAX — OVERLAY TikTok Live
-  OBS : Source Navigateur 1920×1080, fond transparent, « Contrôler l'audio via OBS »
-  coché (la voix du chat sort dans la source).
-  SEUL élément visuel en v1 : l'alerte de don. Pas de fil de chat, pas de
-  compteur, pas de file visible. Invisible (et muet) tant que rien n'arrive.
-  Aperçu à la main : bouton « Tester un don » du setup, ou dans la console
-  GTAMaxOverlay.alerte({ pseudo:'Bob', cadeau:'Rose', nombre:3 }).
--->
 <head>
-<meta charset="UTF-8"/>
-<title>GTA Max — overlay</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTA Max — bandeau TikTok</title>
+<!-- OBS : 1080 × 1920, fond transparent. Le bandeau occupe les 420 premiers pixels. -->
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/overlay.css">
 </head>
 <body>
-
-<!-- Lueur gyrophare sur les bords de l'écran pendant une alerte (deux calques :
-     on anime leur opacité, jamais l'ombre elle-même — coût GPU nul sous OBS). -->
-<div id="lueur" aria-hidden="true">
-  <div class="lueur-bleu"></div>
-  <div class="lueur-rouge"></div>
-</div>
-
-<div id="alerte" class="alerte" aria-live="polite">
-  <div class="rampe" aria-hidden="true">
-    <span class="feu bleu"></span><span class="feu bleu"></span><span class="feu bleu"></span>
-    <span class="barre"></span>
-    <span class="feu rouge"></span><span class="feu rouge"></span><span class="feu rouge"></span>
-  </div>
-  <div class="corps">
-    <div class="titre">🚨 ALERTE POLICE 🚨</div>
-    <div class="pseudo" id="alerte-pseudo"></div>
-    <div class="detail" id="alerte-detail"></div>
-  </div>
-</div>
-
+<section id="classement" aria-label="Classement des viewers">
+  <header class="entete">
+    <div class="marque"><span class="chevrons" aria-hidden="true">❯❯</span> GTA <b>MAX</b></div>
+    <h1>CHASSE AUX POINTS</h1>
+    <span class="top-badge">TOP 5</span>
+  </header>
+  <ol id="classement-liste" aria-label="Les meilleurs viewers"></ol>
+  <div id="classement-vide"><span class="depart-icone" aria-hidden="true">+1</span><div><strong>PRENDS LA PREMIÈRE PLACE</strong><p>Touche ma voiture. Gagne des points.</p></div></div>
+  <footer id="ruban" aria-live="polite">
+    <div id="ruban-repos"><div class="regle"><b>+1</b><span>POINT<br>AU CONTACT</span></div><div class="appel"><strong>!ok garage</strong><span>MONTE DE NIVEAU · AMÉLIORE TA VOITURE</span></div><div class="regle voix-regle"><b>1</b><span class="alterne"><span>ROSE =<br>TA VOIX LUE</span><span>ROSE =<br>+1 POINT</span></span></div><span id="classement-etat" title="État des points">EN ATTENTE</span></div>
+    <div id="progression-annonce"><div id="progression-annonce-titre"></div><div id="progression-annonce-texte"></div></div>
+  </footer>
+  <div id="voix" aria-live="polite"><div class="voix-tete"><span class="voix-barres" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><strong id="voix-pseudo"></strong></div><p id="voix-texte"></p></div>
+</section>
 <script src="/overlay.js"></script>
 </body>
 </html>

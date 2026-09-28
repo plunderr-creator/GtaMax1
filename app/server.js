@@ -1,22 +1,4 @@
-/**
- * GTA MAX — serveur (TikTok Live → voix du chat + police en jeu à chaque cadeau)
- * config.json  → réglages (pseudo, voix, port, dossier GTA V)
- * .env         → SESSION_ID TikTok + SIGN_API_KEY EulerStream (secrets)
- * data.json    → roster des viewers (persistant)
- *
- * Plomberie reprise de Final Max v0.3.0, déjà debuggée en live (connexion
- * TikTok, TTS, HTTP/WebSocket, gardes réseau, config, logs, persistance) : les
- * commentaires qui expliquent POURQUOI ont été gardés avec le code.
- *
- * FLUX
- *   TikTok ─► evenements.js ─┬─ chat « normal » ─► file-tts.js ─► overlay (new Audio /api/tts/<id>)
- *                            ├─ chat « ! »      ─► commandes-chat.js (registre, v1 : !aide)
- *                            └─ cadeau          ─► alerte_don ─► overlay
- *                                                 envoyerCommande('SPAWN_POLICE')
- *                                                   └─► <GTA V>\scripts\gtamax_queue.txt ─► GTAMax.dll
- * Couplage serveur ↔ jeu : envoyerCommande() (gta-bridge.js) ici, le registre
- * d'actions du plugin (scripts/GTAMax.cs) là-bas. Rien d'autre.
- */
+/* GTA Max : connexion TikTok, voix du chat, alertes et commandes de poursuite. */
 
 // path AVANT dotenv : ancrer le .env sur LE DOSSIER DE L'APP (__dirname), pas le
 // cwd — lancé hors du .bat (node app/server.js depuis ailleurs, service, IDE),
@@ -61,10 +43,10 @@ const path                      = require('path');
 const { synthesize: ttsSynthesize } = require('./tts');        // voix neurales Edge (lecture du chat)
 const { creerFileTts }              = require('./file-tts');   // file 4 / 7 s / cache 20
 const { creerPont, NOM_FICHIER }    = require('./gta-bridge'); // LE pont vers le jeu
-const { creerRouteur }              = require('./commandes-chat');
 const { creerEvenements }           = require('./evenements');
-const { creerPersistance }          = require('./persistance');
+const { creerSuivi } = require('./progression');
 const { creerSimulation, trameChat, trameDon } = require('./simulation');   // tester sans live
+const { MODELES } = require('./progression');
 const { etatPlugin }                = require('./outils/plugin');
 
 // ─── CHEMINS ─────────────────────────────────────────────
@@ -153,33 +135,9 @@ if (!SESSION_ID) {
   console.log(`   http://localhost:${PORT}/setup\n`);
 }
 
-// ─── PERSISTANCE (data.json : le roster) ─────────────────
-const persistance = creerPersistance({ dossier: __dirname, log: console });
-const viewers = () => persistance.donnees.viewers;
-
-// Sauvegarde GARANTIE avant toute fermeture (Ctrl+C, arrêt système, erreur fatale)
-let _shuttingDown = false;
-function flushAndExit(code) {
-  if (_shuttingDown) return; _shuttingDown = true;
-  persistance.sauverMaintenant();
-  console.log('💾 Données sauvegardées avant fermeture.');
-  process.exit(code || 0);
-}
-process.on('SIGINT',  () => flushAndExit(0));   // Ctrl+C
-process.on('SIGTERM', () => flushAndExit(0));   // arrêt / fermeture fenêtre
-// ⚠️ Windows : fermer la « fenêtre noire » (X) n'envoie PAS SIGINT/SIGTERM — libuv mappe le
-// CTRL_CLOSE_EVENT sur SIGHUP (et Ctrl+Break sur SIGBREAK). Sans ces handlers, flushAndExit ne
-// tournait jamais et la dernière écriture regroupée (≤500 ms) était perdue au prochain démarrage.
-// C'est pourtant LE moyen n°1 d'arrêter l'app.
-process.on('SIGHUP',  () => flushAndExit(0));   // fermeture de la fenêtre console (Windows)
-process.on('SIGBREAK',() => flushAndExit(0));   // Ctrl+Break (Windows)
-// Filet de sécurité SYNCHRONE : sur toute sortie non déjà flushée, on tente une dernière écriture
-// (sauverMaintenant = writeFileSync, sûr dans un handler 'exit'). Couvre les chemins de sortie
-// internes (ex. process.exit(1) sur EADDRINUSE) qui ne passent pas par flushAndExit.
-process.on('exit', () => { if (_shuttingDown) return; try { persistance.sauverMaintenant(); } catch {} });
-// Une erreur isolée (ex. événement TikTok malformé) ne doit PAS couper le live.
-process.on('uncaughtException', (e) => { console.error('⚠️  Exception non gérée (serveur maintenu) :', (e && e.stack) || e); persistance.sauverMaintenant(); });
-process.on('unhandledRejection', (e) => { console.error('⚠️  Promesse rejetée non gérée :', (e && (e.stack || e.message)) || e); persistance.sauver(); });
+// Une trame ou une promesse défectueuse reste visible dans le journal.
+process.on('uncaughtException', e => console.error('⚠️ Exception non gérée :', e.stack || e));
+process.on('unhandledRejection', e => console.error('⚠️ Promesse rejetée :', (e && e.stack) || e));
 
 // ─── HELPERS ─────────────────────────────────────────────
 function saveConfig(newCfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(newCfg, null, 2), 'utf8'); }
@@ -285,21 +243,18 @@ function etatGta() {
 const tts = creerFileTts({ synthesize: ttsSynthesize, broadcast, reglages: () => cfg.tts, log: console });
 
 // ─── ÉVÉNEMENTS TIKTOK ────────────────────────────────────
-const routerCommande = creerRouteur({ log: console });
 const evenements = creerEvenements({
   tts,
   envoyerCommande: pont.envoyerCommande,
-  routerCommande,
-  viewers,
-  sauver: persistance.sauver,
   broadcast,
   log: console,
+  fichierCredits: () => path.join(dossierJeu(), 'scripts', 'GTAMax.credits-voix.json'),
 });
 
 // ─── TESTER SANS LIVE ─────────────────────────────────────
 // TikTok n'envoie rien hors live. Le setup fabrique donc des messages et des
 // cadeaux (simulation.js) donnés aux VRAIS handlers avec { test: true } : même
-// chemin qu'en live (voix, commandes, alerte, SPAWN_POLICE), roster intact.
+// chemin qu'en live (voix, alerte, SPAWN_POLICE).
 // Le live simulé est coupé dès que le vrai live se connecte (setTikTokStatus).
 const simulation = creerSimulation({ evenements, log: console });
 
@@ -534,7 +489,7 @@ const httpServer = http.createServer(async (req, res) => {
     // ══════════════════════════════════════════════════════
     if (req.method === 'GET' && url === '/api/overlay/status') { json(res, { connectes: clients.size }); return; }
 
-    // Un message de chat : lu par la voix, ou commande s'il commence par « ! ».
+    // Un message de chat : lu par la voix ; les messages « ! » sont ignorés.
     if (req.method === 'POST' && url === '/api/test/chat') {
       const body = await parseBody(req);
       const message = String(body.message == null ? '' : body.message).trim().slice(0, 300);
@@ -553,7 +508,10 @@ const httpServer = http.createServer(async (req, res) => {
       const pseudo = pseudoDeTest(body.pseudo);
       const cadeau = String(body.cadeau == null ? '' : body.cadeau).trim().slice(0, 50) || 'Rose';
       const nombre = borne(body.nombre, 1, 99, 1), rafale = borne(body.rafale, 1, 10, 1), delai = borne(body.delai_s, 0, 60, 0);
-      plusTardTest(delai, () => { for (let i = 0; i < rafale; i++) evenements.onGift(trameDon(pseudo, cadeau, nombre), { test: true }); });
+      // Voiture : '' = celle du viewer, 'hasard' = une du catalogue par cadeau, sinon le modèle choisi.
+      const voiture = body.voiture === 'hasard' || MODELES.includes(body.voiture) ? body.voiture : '';
+      const choisir = () => voiture === 'hasard' ? MODELES[Math.floor(Math.random() * MODELES.length)] : voiture || undefined;
+      plusTardTest(delai, () => { for (let i = 0; i < rafale; i++) evenements.onGift(trameDon(pseudo, cadeau, nombre), { test: true, voiture: choisir() }); });
       const quoi = rafale > 1 ? `${rafale} cadeaux de test` : 'Cadeau de test';
       json(res, { ok: true, message: `${quoi} ${delai ? 'envoyé' + (rafale > 1 ? 's' : '') + ' dans ' + delai + ' s' : 'envoyé' + (rafale > 1 ? 's' : '')} : alerte + voiture de police 🚨` + noteTest(true) });
       return;
@@ -643,6 +601,11 @@ const wss = new WebSocketServer({ server: httpServer, maxPayload: WS_MAX_PAYLOAD
 } });
 
 const clients = new Set();
+const progression = creerSuivi({ fichier: () => path.join(dossierJeu(), 'scripts', 'GTAMax.points'), broadcast });
+progression.actualiser();
+const progressionTimer = setInterval(() => progression.actualiser(), 250);
+progressionTimer.unref();
+wss.on('close', () => clearInterval(progressionTimer));
 
 wss.on('connection', (ws, req) => {
   const addr = (req && req.socket && req.socket.remoteAddress) || '';
@@ -650,6 +613,7 @@ wss.on('connection', (ws, req) => {
   console.log(`✅ Overlay connecté (${clients.size})`);
   ws.send(JSON.stringify({ type: 'app_config', client_version: clientVersion() }));
   ws.send(JSON.stringify({ type: 'tiktok_status', ...tiktokStatus }));
+  ws.send(JSON.stringify(progression.etat()));
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   // Un 'error' non écouté fait planter le process (EventEmitter) : ce listener évite un
@@ -697,15 +661,13 @@ function setTikTokStatus(connected, reason = '') {
 // ─── CONNEXION TIKTOK ─────────────────────────────────────
 let tiktok = null, reconnectTimer = null, reconnectDelay = 10000, reconnectCapMs = 30000;
 
-// Les cinq événements, chacun vers son handler nommé (evenements.js). Le try/catch
+// Les trois événements utilisés, chacun vers son handler nommé (evenements.js). Le try/catch
 // est ici pour qu'un handler qui lève sur une trame malformée ne remonte jamais
 // dans la boucle de lecture du connecteur.
 const HANDLERS_TIKTOK = {
   chat:   evenements.onChat,
   gift:   evenements.onGift,
   like:   evenements.onLike,
-  follow: evenements.onFollow,
-  share:  evenements.onShare,
 };
 
 function connectTikTok() {
@@ -776,7 +738,7 @@ httpServer.listen(PORT, () => {
   const g = etatGta();
   console.log(`📦 GTA Max v${APP_VERSION}`);
   console.log(`🌐 Réglages        → http://localhost:${PORT}/setup`);
-  console.log(`   Overlay OBS     → http://localhost:${PORT}/overlay   (source Navigateur 1920×1080)`);
+  console.log(`   Overlay OBS     → http://localhost:${PORT}/overlay   (source Navigateur 1080×1920)`);
   console.log(`🎮 GTA V           → ${g.dossier}`);
   if (!g.dossierOk)           console.warn('⚠️  GTA5.exe introuvable dans ce dossier — à régler dans le setup.');
   else if (!g.shvdn)          console.warn('⚠️  ScriptHookVDotNet v3 absent du dossier du jeu — voir README.');

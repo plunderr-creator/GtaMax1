@@ -136,14 +136,14 @@ a { color: var(--bleu-l); }
     </div>
     <div class="btn-row">
       <button class="btn alerte" onclick="testerDon()">🚨 Tester un don</button>
-      <span class="note" style="margin:0">Alerte sur l'overlay + merci vocal + une voiture de police en jeu. Le roster n'est pas touché.</span>
+      <span class="note" style="margin:0">Alerte sur l'overlay + merci vocal + une voiture de police en jeu.</span>
     </div>
   </div>
 
   <!-- ── TESTER SANS LIVE ── -->
   <div class="card">
     <div class="card-title">🧪 Tester sans live</div>
-    <div class="card-desc">TikTok n'envoie rien hors live : ici, on fabrique des messages et des cadeaux qui suivent exactement le même chemin qu'en live (voix, commandes « ! », alerte, voiture de police en jeu). Rien n'est enregistré dans le roster. L'overlay doit être ouvert (OBS ou « Voir l'overlay ») pour entendre la voix et voir l'alerte.</div>
+    <div class="card-desc">TikTok n'envoie rien hors live : ici, on fabrique des messages et des cadeaux qui suivent exactement le même chemin qu'en live (voix, alerte, voiture de police en jeu). L'overlay doit être ouvert (OBS ou « Voir l'overlay ») pour entendre la voix et voir l'alerte.</div>
     <div class="grid2">
       <div class="field">
         <label class="label" for="test-pseudo">Pseudo du faux viewer</label>
@@ -160,7 +160,7 @@ a { color: var(--bleu-l); }
       </div>
     </div>
     <div class="field">
-      <label class="label" for="test-message">Message du chat <span class="label-hint">commence par « ! » pour une commande (ex. !aide)</span></label>
+      <label class="label" for="test-message">Message du chat <span class="label-hint">les messages commençant par « ! » sont ignorés</span></label>
       <div class="input-with-toggle">
         <input type="text" id="test-message" value="salut, la police arrive ?" maxlength="300" autocomplete="off">
         <button class="btn" onclick="testerChat()">💬 Envoyer</button>
@@ -182,6 +182,19 @@ a { color: var(--bleu-l); }
         <input type="number" id="test-rafale" min="1" max="10" value="1">
       </div>
     </div>
+    <div class="field">
+      <label class="label" for="test-voiture">Voiture <span class="label-hint">sans changer le niveau du viewer</span></label>
+      <select id="test-voiture">
+        <option value="">Celle du viewer (son niveau)</option>
+        <option value="hasard">Au hasard à chaque cadeau</option>
+        <option value="municipale">Niv. 1 · Police Municipale</option>
+        <option value="police">Niv. 2 · Police GTA</option>
+        <option value="golf">Niv. 3 · Golf GTI</option>
+        <option value="rs3">Niv. 4 · Audi RS3</option>
+        <option value="m5">Niv. 5 · BMW M5</option>
+        <option value="scooter">Niv. 6 · Scooter stunt</option>
+      </select>
+    </div>
     <div class="btn-row">
       <button class="btn alerte" onclick="testerCadeau()">🎁 Envoyer le cadeau</button>
       <span class="note" style="margin:0">Rafale de 3 : trois alertes à la suite, trois voitures espacées de 3 s en jeu.</span>
@@ -191,7 +204,7 @@ a { color: var(--bleu-l); }
       <button class="btn secondaire" id="btn-live" onclick="basculerLive()">▶️ Lancer un live simulé</button>
       <span id="etat-live" class="note" style="margin:0"></span>
     </div>
-    <div class="note">De faux viewers écrivent toutes les 5-10 s (dont un « !aide » de temps en temps) et offrent un cadeau toutes les 20-40 s, pendant 10 min au plus. Coupé tout seul si ton vrai live se connecte.</div>
+    <div class="note">De faux viewers écrivent toutes les 5-10 s et offrent un cadeau toutes les 10-20 s, pendant 10 min au plus. Coupé tout seul si ton vrai live se connecte.</div>
   </div>
 
   <!-- ── TIKTOK ── -->
@@ -294,7 +307,7 @@ a { color: var(--bleu-l); }
   <!-- ── OBS ── -->
   <div class="card">
     <div class="card-title">🎥 OBS</div>
-    <div class="card-desc">Ajoute une <strong>Source navigateur</strong> avec cette adresse, en <strong>1920 × 1080</strong>. Coche <strong>« Contrôler l'audio via OBS »</strong> : la voix du chat sort alors dans la source, pas sur tes haut-parleurs.</div>
+    <div class="card-desc">Ajoute une <strong>Source navigateur</strong> avec cette adresse, en <strong>1080 × 1920</strong>. Coche <strong>« Contrôler l'audio via OBS »</strong> : la voix du chat sort alors dans la source, pas sur tes haut-parleurs.</div>
     <div class="url-obs">
       <input type="text" id="url-overlay" readonly>
       <button class="btn secondaire" onclick="copierUrl()">📋 Copier</button>
@@ -488,7 +501,7 @@ async function testerDon() {
 
 // ── TESTER SANS LIVE ───────────────────────────────────
 // Les trames fabriquées passent par les vrais handlers côté serveur (voix,
-// commandes, alerte, SPAWN_POLICE) sans jamais toucher au roster.
+// alerte, SPAWN_POLICE).
 function delaiTest() { return parseInt(document.getElementById('test-delai').value, 10) || 0; }
 function pseudoTest() { return document.getElementById('test-pseudo').value.trim() || 'testeur'; }
 function entierChamp(id, min, max) {
@@ -520,6 +533,7 @@ async function testerCadeau() {
     cadeau:  document.getElementById('test-cadeau').value,
     nombre:  entierChamp('test-nombre', 1, 99),
     rafale:  entierChamp('test-rafale', 1, 10),
+    voiture: document.getElementById('test-voiture').value,
     delai_s: delaiTest(),
   });
   setTimeout(rafraichirEtat, 300);

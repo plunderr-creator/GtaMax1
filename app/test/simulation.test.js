@@ -9,7 +9,6 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { creerSimulation, trameChat, trameDon, PIECES_CADEAUX } = require('../simulation.js');
 const { creerEvenements, extraireUtilisateur } = require('../evenements.js');
-const { creerRouteur } = require('../commandes-chat.js');
 
 const muet = { log() {}, warn() {}, error() {} };
 
@@ -53,7 +52,7 @@ function espions() {
 
 test('trames : même forme que tiktok-live-connector, lues par les vrais extracteurs', () => {
   const c = trameChat('lucas_13', 'salut', 'Lucas 🔥');
-  assert.deepStrictEqual(extraireUtilisateur(c), { cle: 'lucas_13', pseudo: 'lucas_13', nom: 'Lucas 🔥' });
+  assert.deepStrictEqual(extraireUtilisateur(c), { pseudo: 'lucas_13', nom: 'Lucas 🔥' });
   assert.strictEqual(c.content, 'salut');
   const d = trameDon('lucas_13', 'Galaxy', 3);
   assert.deepStrictEqual({ nom: d.gift.name, diamants: d.gift.diamondCount, n: d.repeatCount, fin: d.repeatEnd },
@@ -74,7 +73,7 @@ test('démarrage : un message dans les 2 s, un cadeau dans les 10 s, tout en { t
   assert.ok(e.recu.every(r => r[2] && r[2].test === true), 'une trame sans { test: true }');
 });
 
-test('cadence : chat toutes les 5-10 s, cadeau toutes les 20-40 s', () => {
+test('cadence : chat toutes les 5-10 s, cadeau toutes les 10-20 s', () => {
   const h = horloge(), e = espions();
   const sim = creerSimulation({ evenements: e.evenements, ...h, hasard: () => 0.5, log: muet });
   sim.demarrer();
@@ -82,7 +81,7 @@ test('cadence : chat toutes les 5-10 s, cadeau toutes les 20-40 s', () => {
   const chats = e.recu.filter(r => r[0] === 'chat').length;
   const dons = e.recu.filter(r => r[0] === 'gift').length;
   assert.ok(chats >= 12 && chats <= 24, chats + ' messages en 2 min');
-  assert.ok(dons >= 3 && dons <= 6, dons + ' cadeaux en 2 min');
+  assert.ok(dons >= 6 && dons <= 12, dons + ' cadeaux en 2 min');
 });
 
 test('arrêt : plus rien ne part, aucune minuterie ne reste', () => {
@@ -121,15 +120,14 @@ test('double démarrage refusé (jamais deux boucles en parallèle)', () => {
   assert.ok(chats <= 12, chats + ' messages en 1 min : deux boucles ?');
 });
 
-test('avec les vrais handlers : voix, alerte, SPAWN_POLICE… et roster vide', () => {
+test('avec les vrais handlers : voix, alerte, SPAWN_POLICE', () => {
   const h = horloge();
-  const b = { dits: [], jeu: [], ecran: [], viewers: {} };
+  const b = { dits: [], jeu: [], ecran: [] };
   const ev = creerEvenements({
     tts: { ajouter: (p, t) => b.dits.push([p, t]) },
     envoyerCommande: (v, a) => b.jeu.push([v, a]),
-    routerCommande: creerRouteur({ log: muet }),
-    viewers: () => b.viewers, sauver() {}, broadcast: m => b.ecran.push(m),
-    maintenant: h.maintenant, log: muet,
+    broadcast: m => b.ecran.push(m),
+    log: muet,
   });
   const sim = creerSimulation({ evenements: ev, ...h, hasard: () => 0.5, log: muet });
   sim.demarrer();
@@ -138,5 +136,4 @@ test('avec les vrais handlers : voix, alerte, SPAWN_POLICE… et roster vide', (
   assert.ok(b.dits.length > 0, 'rien lu');
   assert.ok(b.ecran.some(m => m.type === 'alerte_don'), 'aucune alerte');
   assert.ok(b.jeu.some(j => j[0] === 'SPAWN_POLICE'), 'aucune voiture');
-  assert.deepStrictEqual(b.viewers, {});
 });

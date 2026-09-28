@@ -1,21 +1,8 @@
-/**
- * evenements.js — les cinq événements TikTok, un handler nommé par événement.
- *
- * Tous sont branchés, journalisés et tiennent le roster à jour ; en v1 seuls
- * `chat` (voix + commandes « ! ») et `gift` (alerte + police en jeu) agissent.
- * like / follow / share sont prêts pour le gameplay futur : leur handler est
- * l'endroit où il se greffera.
- *
- * Lecture des trames reprise de Final Max (tiktok-live-connector 2.4.0) :
- * pseudo = user.displayId (repli uniqueId), texte = content, cadeau =
- * gift.name / gift.diamondCount, série = repeatCount + repeatEnd, likes = count.
- */
-const roster = require('./roster');
-const { parserCommande } = require('./commandes-chat');
-
+// Chat → voix ; cadeaux et paliers de likes → alerte, voix et police.
 const SEEN_MSG_MAX   = 600;    // derniers msgId de chat retenus (anti-rejeu), FIFO
-const CHAT_MAX_CHARS = 300;    // au-delà : pavé/spam, ni lu ni routé (règle Final Max)
+const CHAT_MAX_CHARS = 300;    // au-delà : pavé/spam ignoré
 const NOM_MAX        = 32;     // surnom affiché dans l'alerte (en points de code)
+const { MODELES } = require('./progression');   // voitures du catalogue, imposables en test
 
 // Surnom TikTok → texte affichable. Les surnoms sont libres : on retire les
 // caractères de contrôle et les inversions de sens d'écriture (U+202E retourne
@@ -29,37 +16,15 @@ function nomAffichable(brut) {
   return Array.from(propre).slice(0, NOM_MAX).join('');
 }
 
-// { cle: pseudo en minuscules (roster), pseudo: tel que TikTok l'écrit, nom: surnom affichable }
+// Identifiant TikTok et surnom affichable.
 function extraireUtilisateur(data) {
   const u = (data && data.user) || {};
   const pseudo = String(u.displayId || u.uniqueId || (data && data.uniqueId) || '').trim().slice(0, 60);
   const nom = nomAffichable(u.nickname || (data && data.nickname)) || pseudo;
-  return { cle: pseudo.toLowerCase(), pseudo, nom };
+  return { pseudo, nom };
 }
 
-/**
- * @param tts             { ajouter(pseudo, texte) }         file-tts.js
- * @param envoyerCommande (verbe, args)                      gta-bridge.js — le SEUL pont vers le jeu
- * @param routerCommande  (cmd, ctx) → bool                  commandes-chat.js
- * @param viewers         () → roster (objet muté en place)
- * @param sauver          () → persistance débouncée
- * @param broadcast       (message) → overlays
- */
-function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver, broadcast,
-                           maintenant = Date.now, log = console, likesMs = 5000 }) {
-  // Contexte donné aux commandes chat : ce qu'une commande a le droit de faire.
-  const ctxCommande = {
-    repondre: (texte) => tts.ajouter('', texte),
-    envoyerCommande,
-    viewers,
-    sauver,
-    log,
-  };
-
-  function toucher(pseudo) {
-    if (roster.vu(viewers(), pseudo, maintenant())) sauver();
-  }
-
+function creerEvenements({ tts, envoyerCommande, broadcast, log = console, likesParPolice = 250, fichierCredits = null }) {
   // Anti-doublon : TikTok renvoie parfois la même trame de chat plusieurs fois
   // (doublons réseau, rejeu des derniers messages à la reconnexion). Sans ça, un
   // message est lu 2× par la voix. Sans msgId, on ne déduplique pas (mieux vaut
@@ -73,30 +38,58 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     return false;
   }
 
-  // TESTER SANS LIVE : opts.test = trame fabriquée (setup, live simulé). Même
-  // chemin que le vrai live — voix, commandes, alerte, SPAWN_POLICE — mais le
-  // roster n'est JAMAIS touché : un faux viewer n'a rien à faire dans la table
-  // sur laquelle le gameplay futur se posera. Journal préfixé 🧪.
+  // Les événements simulés suivent le même chemin et sont identifiés dans le journal.
   const estTest = (opts) => !!(opts && opts.test);
 
-  // ─── CHAT ───────────────────────────────────────────────
-  // Message normal → voix. Message « ! » → jamais lu : parseur + registre de
-  // commandes (commandes-chat.js), la couture du gameplay viewer.
+  // Voix payante : chaque pièce offerte = 1 message lu. Sans crédit, le chat n'est pas lu (anti-spam).
+  // Gardés dans fichierCredits (JSON { pseudo: crédits }) pour survivre à un redémarrage du serveur.
+  const creditsVoix = new Map();
+  const cheminCredits = () => typeof fichierCredits === 'function' ? fichierCredits() : fichierCredits;
+  if (fichierCredits) {
+    try { for (const [k, v] of Object.entries(JSON.parse(require('fs').readFileSync(cheminCredits(), 'utf8')))) if (v > 0) creditsVoix.set(k, v); }
+    catch (e) { if (e.code !== 'ENOENT') log.error('Crédits voix illisibles : ' + e.message); }
+  }
+  // Crédits des cadeaux de test (« Tester sans live ») : en mémoire seulement, jamais dans le fichier.
+  const creditsTest = new Map();
+  function changerCredits(cle, n, test) {
+    const m = test ? creditsTest : creditsVoix;
+    if (n > 0) m.set(cle, n); else m.delete(cle);
+    if (!fichierCredits || test) return;
+    try {
+      const fs = require('fs');
+      const f = cheminCredits();
+      fs.writeFileSync(f + '.tmp', JSON.stringify(Object.fromEntries(creditsVoix)));
+      fs.renameSync(f + '.tmp', f);
+    } catch (e) { log.error('Crédits voix non sauvés : ' + e.message); }
+  }
+  const commandesGarage = new Map();
   function onChat(data, opts) {
     const test = estTest(opts), tag = test ? '🧪 ' : '';
     if (dejaVu(data && data.common && data.common.msgId)) return;
     const { pseudo } = extraireUtilisateur(data);
     const msg = String((data && (data.content || data.comment)) || '').trim();
     if (!pseudo || !msg || msg.length > CHAT_MAX_CHARS) return;
-    if (!test) toucher(pseudo);
-    if (!msg.startsWith('!')) {
-      log.log(`${tag}💬 CHAT   ${pseudo} : ${msg}`);
-      tts.ajouter(pseudo, msg);
+    if (msg.startsWith('!')) {
+      // Toutes les commandes viewer commencent par « !ok » : !ok garage, !ok barrage…
+      const m = /^!ok(?:\s+(garage|points|niveau|voitures|voiture|lvlup|barrage|boost|acheter|aide)(?:\s+([a-z0-9_]+))?)?$/i.exec(msg);
+      if (!m) return;
+      let action = (m[1] || 'aide').toLowerCase(), valeur = (m[2] || '').toLowerCase();
+      if ((action === 'barrage' || action === 'boost' || action === 'lvlup') && valeur) return;
+      if (action === 'acheter' && valeur !== 'boost' && valeur !== 'barrage') valeur = '';
+      if (action === 'barrage' || action === 'boost') { valeur = action; action = 'sort'; }
+      const cle = pseudo.toLowerCase(), now = Date.now();
+      if (commandesGarage.has(cle) && now - commandesGarage.get(cle) < 3000) return;
+      commandesGarage.delete(cle); commandesGarage.set(cle, now);
+      if (commandesGarage.size > 2000) commandesGarage.delete(commandesGarage.keys().next().value);
+      try { envoyerCommande('GARAGE', { donateur: pseudo, action, valeur }); }
+      catch (e) { log.error('Garage non envoye : ' + e.message); }
       return;
     }
-    const cmd = parserCommande(msg, pseudo);
-    if (!cmd) { log.log(`${tag}💬 CHAT   ${pseudo} : ${msg} (commence par « ! » : non lu)`); return; }
-    routerCommande(cmd, ctxCommande);
+    const credits = (test ? creditsTest : creditsVoix).get(pseudo.toLowerCase()) || 0;
+    if (!credits) { log.log(`${tag}🔇 CHAT   ${pseudo} : ${msg} (sans cadeau, pas lu)`); return; }
+    changerCredits(pseudo.toLowerCase(), credits - 1, test);
+    log.log(`${tag}💬 CHAT   ${pseudo} : ${msg} (${credits - 1} message${credits > 2 ? 's' : ''} restant${credits > 2 ? 's' : ''})`);
+    tts.ajouter(pseudo, msg);
   }
 
   // ─── CADEAU ─────────────────────────────────────────────
@@ -110,66 +103,44 @@ function creerEvenements({ tts, envoyerCommande, routerCommande, viewers, sauver
     const cadeau   = String(g.name || gd.giftName || data.giftName || 'Cadeau').slice(0, 50);
     const diamants = Math.max(0, parseInt(g.diamondCount ?? gd.diamondCount ?? data.diamondCount ?? 0, 10) || 0);
     const nombre   = Math.max(1, parseInt(data.repeatCount, 10) || 1);
-    if (!test) toucher(pseudo);                                       // série en cours = le viewer est là
     if (data.repeatEnd === 0 || data.repeatEnd === false) return;    // série en cours → on attend la fin
     const pieces = diamants * nombre;
+    if (pieces > 0) changerCredits(pseudo.toLowerCase(), ((test ? creditsTest : creditsVoix).get(pseudo.toLowerCase()) || 0) + pieces, test);
     log.log(`${tag}🎁 DON    ${pseudo} → ${cadeau} ×${nombre} (${pieces} pièce${pieces > 1 ? 's' : ''})`);
-    if (!test) {
-      roster.ajouterDon(viewers(), pseudo, pieces, maintenant());
-      sauver();
-    }
     // Ce que VOIT et ENTEND le live : alerte, merci vocal nominatif (repris de
     // Final Max : le donateur veut être entendu), voiture de police en jeu.
-    broadcast({ type: 'alerte_don', pseudo: nom, cadeau, nombre, pieces });
+    broadcast({ type: 'alerte_don', pseudo: nom, identifiant: pseudo, cadeau, nombre, pieces });
     tts.ajouter('', 'Merci ' + pseudo + ' pour ' + cadeau + (nombre > 1 ? ' fois ' + nombre : '') + ' !');
     try {
-      envoyerCommande('SPAWN_POLICE', { donateur: pseudo, cadeau });
+      // 1 point au classement par pièce (pas pour les cadeaux de test : classement réel).
+      // En test, le setup peut imposer la voiture du catalogue (le profil du viewer ne change pas).
+      const voiture = test && MODELES.includes(opts.voiture) ? { voiture: opts.voiture } : {};
+      envoyerCommande('SPAWN_POLICE', test ? { donateur: pseudo, cadeau, ...voiture } : { donateur: pseudo, cadeau, points: pieces });
     } catch (e) {
       log.error(`❌ SPAWN_POLICE non envoyée (${pseudo}) : ${(e && e.message) || e}`);
     }
   }
 
-  // ─── LIKES ──────────────────────────────────────────────
-  // Rafales : on agrège par viewer et on journalise une ligne par viewer toutes
-  // les likesMs, au lieu d'une ligne par trame.
-  const likes = new Map();   // cle → { pseudo, n }
+  // Une voiture tous les 250 likes cumulés du live.
+  let likesTotal = 0;
   function onLike(data) {
-    const { cle, pseudo } = extraireUtilisateur(data);
+    const { pseudo } = extraireUtilisateur(data);
     const n = Math.max(0, parseInt(data && (data.count ?? data.likeCount), 10) || 0);
     if (!pseudo || !n) return;
-    toucher(pseudo);
-    const e = likes.get(cle) || { pseudo, n: 0 };
-    e.n += n;
-    likes.set(cle, e);
+    const avant = Math.floor(likesTotal / likesParPolice);
+    likesTotal += n;
+    for (let i = avant; i < Math.floor(likesTotal / likesParPolice); i++) {
+      log.log(`❤️ ${(i + 1) * likesParPolice} LIKES → police (${pseudo})`);
+      broadcast({ type: 'alerte_like', pseudo, identifiant: pseudo, cadeau: likesParPolice + ' likes', nombre: 1 });
+      tts.ajouter('', likesParPolice + ' likes, la police arrive !');
+      try {
+        envoyerCommande('SPAWN_POLICE', { donateur: pseudo, cadeau: likesParPolice + ' likes' });
+      } catch (err) {
+        log.error(`❌ SPAWN_POLICE non envoyée (likes) : ${(err && err.message) || err}`);
+      }
+    }
   }
-  function viderLikes() {
-    for (const e of likes.values()) log.log(`❤️ LIKES  ${e.pseudo} → ${e.n}`);
-    likes.clear();
-  }
-  const minuterieLikes = setInterval(viderLikes, likesMs);
-  if (minuterieLikes.unref) minuterieLikes.unref();
-
-  // ─── FOLLOW ─────────────────────────────────────────────
-  // Dédoublonné pour la durée du process : TikTok renvoie l'événement
-  // plusieurs fois par follower.
-  const followVus = new Set();
-  function onFollow(data) {
-    const { cle, pseudo } = extraireUtilisateur(data);
-    if (!pseudo || followVus.has(cle)) return;
-    followVus.add(cle);
-    toucher(pseudo);
-    log.log(`💙 FOLLOW ${pseudo}`);
-  }
-
-  // ─── PARTAGE ────────────────────────────────────────────
-  function onShare(data) {
-    const { pseudo } = extraireUtilisateur(data);
-    if (!pseudo) return;
-    toucher(pseudo);
-    log.log(`📣 SHARE  ${pseudo}`);
-  }
-
-  return { onChat, onGift, onLike, onFollow, onShare, viderLikes };
+  return { onChat, onGift, onLike };
 }
 
 module.exports = { creerEvenements, extraireUtilisateur, nomAffichable };

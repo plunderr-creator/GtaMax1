@@ -9,20 +9,15 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { creerEvenements, extraireUtilisateur } = require('../evenements.js');
-const { creerRouteur } = require('../commandes-chat.js');
 
 const muet = { log() {}, warn() {}, error() {} };
 
 function banc() {
-  const b = { dits: [], jeu: [], ecran: [], lignes: [], sauvegardes: 0, viewers: {}, t: 5000 };
+  const b = { dits: [], jeu: [], ecran: [], lignes: [],  };
   b.ev = creerEvenements({
     tts: { ajouter: (pseudo, texte) => b.dits.push([pseudo, texte]) },
     envoyerCommande: (verbe, args) => b.jeu.push([verbe, args]),
-    routerCommande: creerRouteur({ maintenant: () => b.t, log: muet }),
-    viewers: () => b.viewers,
-    sauver: () => { b.sauvegardes++; },
     broadcast: m => b.ecran.push(m),
-    maintenant: () => b.t,
     log: { ...muet, log: s => b.lignes.push(s) },
   });
   return b;
@@ -32,37 +27,37 @@ const don = (id, nom, diamants, extra = {}) => ({ user: { displayId: id, nicknam
 
 test('extraireUtilisateur : pseudo = displayId (repli uniqueId), nom = surnom nettoyé', () => {
   assert.deepStrictEqual(extraireUtilisateur({ user: { displayId: 'Bob_42', nickname: 'Bob 🔥' } }),
-    { cle: 'bob_42', pseudo: 'Bob_42', nom: 'Bob 🔥' });
+    { pseudo: 'Bob_42', nom: 'Bob 🔥' });
   assert.strictEqual(extraireUtilisateur({ user: { uniqueId: 'alice' } }).pseudo, 'alice');
   assert.strictEqual(extraireUtilisateur({ uniqueId: 'carl' }).nom, 'carl');       // pas de surnom → le pseudo
   assert.strictEqual(extraireUtilisateur({ user: { displayId: 'x', nickname: 'A‮evil\u0007' } }).nom, 'Aevil');
   assert.strictEqual(extraireUtilisateur({}).pseudo, '');
 });
 
-test('chat : message normal → lu par la voix, viewer au roster', () => {
+test('chat : sans cadeau → pas lu ; 1 pièce offerte = 1 message lu', () => {
   const b = banc();
-  b.ev.onChat(chat('Bob', 'salut tout le monde'));
-  assert.deepStrictEqual(b.dits, [['Bob', 'salut tout le monde']]);
-  assert.deepStrictEqual(b.viewers.bob, { premiere_vue: 5000, derniere_vue: 5000, dons_total: 0 });
-  assert.ok(b.sauvegardes > 0);
-});
-
-test('chat : une commande « ! » n\'est jamais lue ; !aide répond par la voix', () => {
-  const b = banc();
-  b.ev.onChat(chat('Bob', '!aide'));
-  assert.strictEqual(b.dits.length, 1);
-  assert.strictEqual(b.dits[0][0], '');                      // la réponse, pas le message
-  assert.match(b.dits[0][1], /aucune commande/i);
-  b.ev.onChat(chat('Bob', '!inconnue et du texte'));
-  b.ev.onChat(chat('Bob', '!!!'));
-  assert.strictEqual(b.dits.length, 1);                      // ni lue, ni répondue
+  b.ev.onChat(chat('Bob', 'gratuit'));
+  assert.strictEqual(b.dits.length, 0);
+  b.ev.onGift(don('bob', 'Rose', 1, { repeatCount: 2 }));
+  b.dits.length = 0;
+  for (const m of ['un', 'deux', 'trois']) b.ev.onChat(chat('Bob', m));
+  assert.deepStrictEqual(b.dits, [['Bob', 'un'], ['Bob', 'deux']]);
 });
 
 test('chat : même msgId deux fois (rejeu TikTok) → une seule lecture', () => {
   const b = banc();
+  b.ev.onGift(don('Bob', 'Rose', 5)); b.dits.length = 0;
   b.ev.onChat(chat('Bob', 'coucou', { common: { msgId: '123' } }));
   b.ev.onChat(chat('Bob', 'coucou', { common: { msgId: '123' } }));
   assert.strictEqual(b.dits.length, 1);
+});
+
+test('test : voiture imposée du catalogue, jamais en live ni hors catalogue', () => {
+  const b = banc();
+  b.ev.onGift(don('testeur', 'Rose', 1), { test: true, voiture: 'scooter' });
+  b.ev.onGift(don('testeur', 'Rose', 1), { test: true, voiture: 'fbi2' });
+  b.ev.onGift(don('bob', 'Rose', 1), { voiture: 'scooter' });
+  assert.deepStrictEqual(b.jeu.map(j => j[1].voiture), ['scooter', undefined, undefined]);
 });
 
 test('chat : message vide, sans pseudo ou pavé de plus de 300 caractères → ignoré', () => {
@@ -73,13 +68,12 @@ test('chat : message vide, sans pseudo ou pavé de plus de 300 caractères → i
   assert.strictEqual(b.dits.length, 0);
 });
 
-test('don : alerte à l\'écran + merci vocal + SPAWN_POLICE + roster en pièces', () => {
+test('don : alerte à l\'écran + merci vocal + SPAWN_POLICE', () => {
   const b = banc();
   b.ev.onGift(don('bob', 'Rose', 1, { repeatCount: 5 }));
-  assert.deepStrictEqual(b.ecran, [{ type: 'alerte_don', pseudo: 'Le bob', cadeau: 'Rose', nombre: 5, pieces: 5 }]);
-  assert.deepStrictEqual(b.jeu, [['SPAWN_POLICE', { donateur: 'bob', cadeau: 'Rose' }]]);
+  assert.deepStrictEqual(b.ecran, [{ type: 'alerte_don', pseudo: 'Le bob', identifiant: 'bob', cadeau: 'Rose', nombre: 5, pieces: 5 }]);
+  assert.deepStrictEqual(b.jeu, [['SPAWN_POLICE', { donateur: 'bob', cadeau: 'Rose', points: 5 }]]);
   assert.deepStrictEqual(b.dits, [['', 'Merci bob pour Rose fois 5 !']]);
-  assert.strictEqual(b.viewers.bob.dons_total, 5);
 });
 
 test('don en série : rien tant que la série n\'est pas finie, une seule voiture à la fin', () => {
@@ -90,7 +84,6 @@ test('don en série : rien tant que la série n\'est pas finie, une seule voitur
   assert.strictEqual(b.ecran.length, 0);
   b.ev.onGift(don('bob', 'Rose', 1, { repeatCount: 3, repeatEnd: true }));
   assert.strictEqual(b.jeu.length, 1);
-  assert.strictEqual(b.viewers.bob.dons_total, 3);
 });
 
 test('don : pont vers le jeu en panne → l\'alerte et le merci passent quand même', () => {
@@ -99,9 +92,8 @@ test('don : pont vers le jeu en panne → l\'alerte et le merci passent quand m�
   const ev = creerEvenements({
     tts: { ajouter: (p, t) => b.dits.push([p, t]) },
     envoyerCommande: () => { throw new TypeError('pont cassé'); },
-    routerCommande: () => false,
-    viewers: () => b.viewers, sauver() {}, broadcast: m => b.ecran.push(m),
-    maintenant: () => 1, log: { ...muet, error: s => erreurs.push(s) },
+    broadcast: m => b.ecran.push(m),
+    log: { ...muet, error: s => erreurs.push(s) },
   });
   assert.doesNotThrow(() => ev.onGift(don('bob', 'Rose', 1)));
   assert.strictEqual(b.ecran.length, 1);
@@ -109,67 +101,107 @@ test('don : pont vers le jeu en panne → l\'alerte et le merci passent quand m�
   assert.match(erreurs[0], /pont cassé/);
 });
 
-// ── Tester sans live : { test: true } = même chemin, roster intact ────────
+// ── Tester sans live : { test: true } = même chemin ────────
 
-test('test : message de chat lu par la voix, roster intact, journal 🧪', () => {
+test('test : message de chat lu par la voix, journal 🧪', () => {
   const b = banc();
+  b.ev.onGift(don('testeur', 'Rose', 1), { test: true }); b.dits.length = 0;
   b.ev.onChat(chat('testeur', 'salut la police'), { test: true });
   assert.deepStrictEqual(b.dits, [['testeur', 'salut la police']]);
-  assert.deepStrictEqual(b.viewers, {});
-  assert.strictEqual(b.sauvegardes, 0);
   assert.ok(b.lignes.some(l => l.startsWith('🧪') && l.includes('salut la police')));
 });
 
-test('test : une commande « ! » passe par le vrai registre', () => {
-  const b = banc();
-  b.ev.onChat(chat('testeur', '!aide'), { test: true });
-  assert.match(b.dits[0][1], /aucune commande/i);
-  assert.deepStrictEqual(b.viewers, {});
-});
-
-test('test : cadeau → alerte + merci + SPAWN_POLICE, roster intact', () => {
+test('test : cadeau → alerte + merci + SPAWN_POLICE', () => {
   const b = banc();
   b.ev.onGift(don('testeur', 'Galaxy', 1000, { repeatCount: 2 }), { test: true });
-  assert.deepStrictEqual(b.ecran, [{ type: 'alerte_don', pseudo: 'Le testeur', cadeau: 'Galaxy', nombre: 2, pieces: 2000 }]);
+  assert.deepStrictEqual(b.ecran, [{ type: 'alerte_don', pseudo: 'Le testeur', identifiant: 'testeur', cadeau: 'Galaxy', nombre: 2, pieces: 2000 }]);
   assert.deepStrictEqual(b.jeu, [['SPAWN_POLICE', { donateur: 'testeur', cadeau: 'Galaxy' }]]);
   assert.strictEqual(b.dits.length, 1);
-  assert.deepStrictEqual(b.viewers, {});
-  assert.strictEqual(b.sauvegardes, 0);
 });
 
-test('like : agrégé par viewer, journalisé au vidage, roster à jour', () => {
+test('like : tous les 250 likes du live (tous viewers) → SPAWN_POLICE', () => {
   const b = banc();
-  b.ev.onLike({ user: { displayId: 'Bob' }, count: 15 });
-  b.ev.onLike({ user: { displayId: 'bob' }, count: 5 });
-  b.ev.onLike({ user: { displayId: 'Alice' }, count: 0 });
-  assert.ok(b.viewers.bob);
-  assert.strictEqual(b.viewers.alice, undefined);             // 0 like = rien
-  b.ev.viderLikes();
-  assert.deepStrictEqual(b.lignes.filter(l => l.includes('LIKES')), ['❤️ LIKES  Bob → 20']);
-  b.ev.viderLikes();
-  assert.strictEqual(b.lignes.filter(l => l.includes('LIKES')).length, 1);   // vidé
+  b.ev.onLike({ user: { displayId: 'Bob' }, count: 200 });
+  assert.strictEqual(b.jeu.length, 0);
+  b.ev.onLike({ user: { displayId: 'Alice' }, count: 60 });   // 260 → 1re voiture
+  assert.deepStrictEqual(b.jeu, [['SPAWN_POLICE', { donateur: 'Alice', cadeau: '250 likes' }]]);
+  b.ev.onLike({ user: { displayId: 'Bob' }, count: 500 });    // 760 → 500 et 750 franchis
+  assert.strictEqual(b.jeu.length, 3);
+  assert.deepStrictEqual(b.ecran.map(e => [e.type, e.identifiant, e.cadeau]), [
+    ['alerte_like', 'Alice', '250 likes'], ['alerte_like', 'Bob', '250 likes'], ['alerte_like', 'Bob', '250 likes'],
+  ]);
+  assert.strictEqual(b.dits.length, 3);                       // annonce vocale à chaque voiture
 });
 
-test('follow : dédoublonné (TikTok le renvoie plusieurs fois)', () => {
+test('les trois handlers sont des fonctions nommées', () => {
   const b = banc();
-  b.ev.onFollow({ user: { displayId: 'Bob' } });
-  b.ev.onFollow({ user: { displayId: 'BOB' } });
-  assert.strictEqual(b.lignes.filter(l => l.includes('FOLLOW')).length, 1);
-  assert.ok(b.viewers.bob);
-});
-
-test('share : journalisé, roster à jour, aucune action', () => {
-  const b = banc();
-  b.ev.onShare({ user: { displayId: 'Bob' } });
-  assert.strictEqual(b.lignes.filter(l => l.includes('SHARE')).length, 1);
-  assert.ok(b.viewers.bob);
-  assert.strictEqual(b.jeu.length + b.ecran.length + b.dits.length, 0);
-});
-
-test('les cinq handlers sont des fonctions nommées', () => {
-  const b = banc();
-  for (const n of ['onChat', 'onGift', 'onLike', 'onFollow', 'onShare']) {
+  for (const n of ['onChat', 'onGift', 'onLike']) {
     assert.strictEqual(typeof b.ev[n], 'function');
     assert.strictEqual(b.ev[n].name, n);
   }
+});
+
+test('chat : commandes inconnues ignorées sans réponse vocale ni action en jeu', () => {
+  const b = banc();
+  for (const message of ['!inconnue', '!police', '!!!']) b.ev.onChat(chat('Bob', message));
+  assert.deepStrictEqual(b.dits, []);
+  assert.deepStrictEqual(b.jeu, []);
+});
+
+test('garage : identité issue du compte, casse tolérée, anti-rejeu et anti-spam par viewer', () => {
+  const b = banc();
+  b.ev.onChat(chat('Alice', '!OK LVLUP', { common: { msgId: 'achat-1' } }));
+  b.ev.onChat(chat('Alice', '!OK LVLUP', { common: { msgId: 'achat-1' } }));
+  b.ev.onChat(chat('alice', '!ok lvlup'));
+  b.ev.onChat(chat('Bob', '!ok garage'));
+  b.ev.onChat(chat('Charlie', '!ok lvlup Alice'));
+  assert.deepStrictEqual(b.jeu, [
+    ['GARAGE', { donateur: 'Alice', action: 'lvlup', valeur: '' }],
+    ['GARAGE', { donateur: 'Bob', action: 'garage', valeur: '' }],
+  ]);
+  assert.deepStrictEqual(b.dits, []);
+});
+
+test('préfixe !ok : barrage, aide seule, anciennes commandes ignorées, pas lu par la voix', () => {
+  const b = banc();
+  b.ev.onChat(chat('Alice', '!ok Barrage'));
+  b.ev.onChat(chat('Bob', '!ok'));
+  b.ev.onChat(chat('Charlie', '!garage'));
+  b.ev.onChat(chat('Dan', '!sort barrage'));
+  b.ev.onChat(chat('Eve', '!okgarage'));
+  b.ev.onChat(chat('Fred', '!ok BOOST'));
+  b.ev.onChat(chat('Gus', '!ok boost moteur'));
+  b.ev.onChat(chat('Hugo', '!ok acheter Boost'));
+  b.ev.onChat(chat('Ivy', '!ok acheter moteur'));
+  assert.deepStrictEqual(b.jeu, [
+    ['GARAGE', { donateur: 'Alice', action: 'sort', valeur: 'barrage' }],
+    ['GARAGE', { donateur: 'Bob', action: 'aide', valeur: '' }],
+    ['GARAGE', { donateur: 'Fred', action: 'sort', valeur: 'boost' }],
+    ['GARAGE', { donateur: 'Hugo', action: 'acheter', valeur: 'boost' }],
+    ['GARAGE', { donateur: 'Ivy', action: 'acheter', valeur: '' }],
+  ]);
+  assert.deepStrictEqual(b.dits, []);
+});
+
+test('likes : trames vides, négatives ou sans pseudo ne déclenchent rien', () => {
+  const b = banc();
+  for (const data of [null, {}, { count: 250 }, { user: { displayId: 'Bob' }, count: -250 }]) b.ev.onLike(data);
+  assert.deepStrictEqual(b.jeu, []);
+  b.ev.onLike({ user: { displayId: 'Bob' }, count: 249 });
+  assert.strictEqual(b.jeu.length, 0);
+  b.ev.onLike({ user: { displayId: 'Bob' }, count: 1 });
+  assert.strictEqual(b.jeu.length, 1);
+});
+
+test('crédits voix : gardés sur disque après un redémarrage du serveur', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const fichier = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gtamax-credits-')), 'credits-voix.json');
+  const dits = [];
+  const creer = () => creerEvenements({ tts: { ajouter: (p, t) => dits.push(t) }, envoyerCommande() {}, broadcast() {}, log: muet, fichierCredits: fichier });
+  creer().onGift(don('bob', 'Rose', 1, { repeatCount: 2 }));
+  dits.length = 0;
+  const apres = creer();
+  apres.onChat(chat('Bob', 'un')); apres.onChat(chat('Bob', 'deux')); apres.onChat(chat('Bob', 'trois'));
+  assert.deepStrictEqual(dits, ['un', 'deux']);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(fichier, 'utf8')), {});
 });

@@ -1,159 +1,107 @@
 # GTA Max
 
-Overlay TikTok Live pour GTA V : la voix lit le chat, et chaque cadeau lâche un
-flic de plus à tes trousses (mode « survie » façon Driver 2), avec une alerte à
-l'écran.
+TikTok Live → voix du chat, alertes sur l'overlay et poursuites dans GTA V.
+Un cadeau terminé ou un palier de 250 likes ajoute une voiture de police.
+Les noms des donateurs s'affichent au-dessus des voitures.
 
-Plomberie reprise de Final Max v0.3.0 (connexion TikTok, voix Edge, overlay,
-réglages, persistance). Spec et plan : `docs/superpowers/`.
+## Lancer
 
-## Pendant un live
+1. Ouvrir **GTA Max.bat**, puis configurer le compte TikTok, la voix et le dossier du jeu dans http://localhost:3200/setup.
+2. Lancer GTA V par Steam.
+3. Dans OBS, ajouter http://localhost:3200/overlay comme source navigateur en 1080 × 1920 et cocher « Contrôler l'audio via OBS ».
 
-1. Lancer **`GTA Max.bat`** — la page de réglages s'ouvre (`http://localhost:3200/setup`).
-   Ne pas fermer la fenêtre noire.
-2. Lancer GTA V **par Steam**.
-3. Dans OBS, la source navigateur de l'overlay (voir plus bas) est déjà là.
+Les secrets restent dans app/.env ; les réglages de l'application sont dans app/config.json.
+Les commandes viewer commencent par « !ok » (ex. `!ok garage`, `!ok barrage`). Les messages commençant par « ! » ne sont jamais lus par la voix.
 
-## Première fois
+## Points, niveaux et garage
 
-**Réglages** (page `/setup`) : pseudo TikTok, code `sessionid` (étapes dans la
-page), clé EulerStream (recommandée), voix, dossier GTA V. Les secrets vont dans
-`app\.env`, jamais dans `config.json`.
-Raccourci : copier `app\.env` de Final Max dans `app\` reprend son `SESSION_ID`
-et sa clé EulerStream.
+Le premier contact de chaque voiture de viewer avec le joueur rapporte **1 point**.
+Une même voiture ne peut pas marquer plusieurs fois. Les points déjà gagnés sont repris.
+Les niveaux 1 à 5 correspondent à **0, 5, 15, 30 et 60 points cumulés**.
+Les achats diminuent le solde disponible, jamais le total, le niveau ou le classement.
 
-**OBS** : Source navigateur `http://localhost:3200/overlay`, **1920 × 1080**,
-cocher **« Contrôler l'audio via OBS »** (la voix sort dans la source).
+L'overlay OBS affiche les cinq premiers viewers, leur niveau, leur total et leur solde.
+Les gains et nouveaux niveaux apparaissent dans un bandeau. Il reprend les scores à
+chaque connexion sans rejouer les animations anciennes. En cas de lecture interrompue,
+il garde les derniers scores et indique qu'il attend le jeu.
 
-**Côté jeu** (déjà fait le 2026-09-23) :
-- ScriptHookVDotNet v3 **nightly** (v3.7.0-nightly.190, obligatoire pour le jeu
-  en build 3889) à la racine du jeu. Console SHVDN sur **F8** (F4 = TrainerV).
-- **`Installer plugin GTA.bat`** : compile `scripts\GTAMax.cs` + `scripts\Survie.cs`
-  en `<GTA V>\scripts\GTAMax.dll` et dépose `GTAMax.ini`. À relancer après toute
-  modification de ces fichiers (le setup dit « pas à jour » sinon). Jeu ouvert :
-  SHVDN travaille sur une copie de la DLL, l'installation passe ; ensuite **F8**,
-  `Reload()`.
+Commandes du chat (un appel toutes les trois secondes par viewer) :
 
-**Vérifier** : bouton **« Tester un don »** du setup → alerte sur l'overlay,
-merci vocal, police en jeu (roster non touché).
+| Commande | Action |
+|---|---|
+| `!ok garage`, `!ok points`, `!ok niveau` | Afficher son profil dans le bandeau OBS |
+| `!ok lvlup` | Monter sa voiture d'un rang : moteur (+8 puissance/vitesse), transmission (+0,08 couple) et freins GTA d'un coup |
+| `!ok voitures` | Afficher les modèles et niveaux requis |
+| `!ok voiture rs3` | Choisir un modèle débloqué pour sa prochaine apparition |
+| `!ok voiture municipale` | Revenir à la Police Municipale (modèles de `[POLICE] MODELES` dans l'INI) |
+| `!ok acheter boost` | Acheter un boost (3 points, niveau 1) : il part en stock, affiché 🚀 sur sa carte de l'overlay (max 9) |
+| `!ok acheter barrage` | Acheter un barrage (5 points, niveau 2) : en stock, affiché 🚧 sur sa carte (max 9) |
+| `!ok boost` | Lancer un boost du stock : ses voitures en poursuite +30 vitesse, +0,6 couple pendant 15 s (🚀 qui pulse). Rien n'est utilisé s'il n'a pas de voiture en poursuite |
+| `!ok barrage` | Lancer un barrage du stock : 3 voitures de police devant le joueur d'un coup (🚧 qui pulse 20 s), lance la poursuite si besoin |
+| `!ok` ou `!ok aide` | Afficher les commandes et tarifs |
 
-## Tester sans live
+`!ok lvlup` a trois rangs : **3 / 8 / 15 points**, aux niveaux **2 / 3 / 4**. Chaque rang améliore les trois pièces ensemble.
+Les améliorations sont attachées au viewer et suivent ses voitures. Les freins GTA
+s'appliquent dans la limite des modifications disponibles sur chaque modèle.
+Moteur et transmission restent bornés.
 
-TikTok n'envoie rien hors live. Carte **« 🧪 Tester sans live »** du setup :
+Catalogue (seuils 0 / 5 / 15 / 30 / 60 / 100 points cumulés) : `municipale` (INI, `pranger`) niveau 1,
+`police` (police GTA) niveau 2, `golf` (`mk7`) niveau 3, `rs3` (`cmstrs3`) niveau 4, `m5` (`bmci`) niveau 5,
+`scooter` (`mbkstunt`) niveau 6. La sélection est gratuite après déblocage. Le modèle choisi doit exister
+dans le jeu ; il ne remplace pas une voiture déjà en poursuite. Un modèle sauvegardé inconnu revient à `municipale`.
 
-- **Message du chat** (pseudo au choix) : lu par la voix, ou commande s'il
-  commence par « ! » (`!aide` répond).
-- **Cadeau** : nom, combo (×1-99), rafale (1-10 d'un coup : en survie, un flic
-  de plus toutes les 3 s jusqu'à 4, puis ils accélèrent).
-- **Envoyer dans 5/10/30 s** : le temps de revenir sur GTA avant que ça parte.
-- **Live simulé** : de faux viewers écrivent toutes les 5-10 s et offrent un
-  cadeau toutes les 20-40 s, 10 min au plus. Coupé tout seul (et refusé) si le
-  vrai live TikTok est connecté.
+Le jeu reste l'unique source des points et des achats. Il sauvegarde dans
+`scripts/GTAMax.points` et transmet ses réponses via `GTAMax.points.messages`.
+Le serveur et l'overlay lisent ces données sans les modifier. Les achats ne sont
+confirmés qu'après sauvegarde ; un fichier illisible suspend la progression pour
+éviter de l'écraser. Les commandes nécessitent GTA V et le plugin en fonctionnement.
 
-Même chemin qu'en live (voix, commandes, alerte, `SPAWN_POLICE`), mais **rien
-dans le roster**. L'overlay doit être ouvert (OBS ou « Voir l'overlay ») : la
-carte « État » dit combien il y en a.
+## Poursuite
+
+Le plugin utilise uniquement le mode survie : jusqu'à 20 voitures, un conducteur par voiture.
+Toutes les voitures poursuivent directement le joueur et cherchent le contact. Elles visent
+un point proche de sa trajectoire, roulent plus vite pour le rattraper et ralentissent dans
+les virages serrés. Elles apparaissent sur une route derrière lui lorsque c'est possible.
+
+Un cadeau prolonge la poursuite de 120 secondes, même au plafond de voitures.
+Un policier venu au contact puis suffisamment loin et hors de vue pendant 5 secondes abandonne.
+La poursuite se termine lorsque tous sont semés, à l'expiration du délai, à la mort ou à la capture.
+Le meilleur temps reste enregistré dans scripts/GTAMax.record, dans le dossier du jeu.
+
+La police normale du jeu est suspendue pendant la poursuite. Les étoiles affichent sa pression.
+Le comportement normal du jeu est rétabli à la fin ou au rechargement du plugin.
 
 ## Réglages du plugin
 
-`<GTA V>\scripts\GTAMax.ini` (jamais écrasé par une réinstallation).
+Modifier scripts/GTAMax.ini **dans le dossier de GTA V**, puis F8 → Reload().
 
-**`MODE=survie`** (défaut, inspiré du mode Survival de Driver 2) : chaque cadeau
-lâche un flic de plus à tes trousses (4 max ; au-delà, ils accélèrent). Voitures
-Police Nationale **indestructibles**. Quand tu roules vite, c'est **la course** :
-ils entrent tour à tour sur la voie d'à côté, derrière toi, ou par une rue de
-côté devant toi — toujours dans ton sens —, avec trois rôles qui tournent :
-coureur (se cale à ta hauteur et te serre), bloqueur (te double et te barre la
-route), collant (pare-choc contre pare-choc). Aucun coup de boost ; leur vitesse
-de pointe s'adapte à ta voiture. Lent ou arrêté, ils arrivent autour de toi. Ils
-apparaissent toujours sur une route **hors de ta vue**, et un flic semé ou planté
-réapparaît ailleurs, hors de vue. Aucune police du jeu pendant la poursuite (pas de tirs, d'hélicos ni de
-renforts). Elle s'arrête 60 s après le dernier cadeau : « Survécu ! » avec ton
-temps et ton record (`<GTA V>\scripts\GTAMax.record`). À pied, un flic arrêté
-près de toi 2 s : « Attrapé ! ». Réglages dans `[SURVIE]` : `MAX_FLICS`,
-`DUREE_S`, `DISTANCE_M`, `INDESTRUCTIBLES` ; voiture et policier : `MODELES` et
-`PED` de `[POLICE]`. Le jeu plante en poursuite ? Essaie `MODELES=police` et
-`PED=s_m_y_hwaycop_01` (modèles d'origine) : s'il ne plante plus, ce sont les mods
-de police. Rapports de crash du jeu : `%LOCALAPPDATA%\Rockstar Games\GTAV\CrashLogs`.
-Design : `docs/superpowers/specs/2026-09-23-mode-survie-design.md`.
+| Section | Réglage | Valeur actuelle |
+|---|---|---|
+| SURVIE | MAX_FLICS | 20 |
+| SURVIE | DUREE_S | 120 |
+| SURVIE | DISTANCE_M | 60 |
+| SURVIE | INDESTRUCTIBLES | 1 |
+| POLICE | MODELES | pranger |
+| POLICE | PED | s_m_y_sheriff_01 |
 
-**`MODE=etoiles`** : chaque cadeau ajoute une étoile de recherche (3
-max) et c'est la vraie police du jeu qui te poursuit — tes voitures Police
-Nationale du `dispatch.meta` —, **sans armes** (elle percute et arrête, ne
-tire jamais) et **sans hélicoptères**. Pendant 45 s après chaque cadeau, elle
-sait toujours où tu es. Réglages dans `[ETOILES]` : `PAR_CADEAU`, `MAX`,
-`TENUE_S`, `TIRS`, `HELICOS`. Pas d'étoile pendant une mission.
+MODELES accepte plusieurs véhicules séparés par des virgules, utilisés à tour de rôle.
+INDESTRUCTIBLES=0 permet de détruire les véhicules et les conducteurs.
 
-**`MODE=voitures`** : le script fait apparaître ses propres voitures (section
-`[POLICE]`) : **`pranger`** = voiture Police Nationale (**`policet`**, le fourgon
-CRS, est retiré pour l'instant : il s'arrête juste après être apparu), 20 m
-derrière toi, moteur +40 %, 3 réapparitions derrière toi si tu la sèmes, une
-voiture toutes les 3 s, 8 max, un policier par voiture. **`MODE=les_deux`** :
-les deux à la fois.
-**Recharger après une modif** (ini ou plugin) sans relancer le jeu : **F8**, taper
-`Reload()`, Entrée.
-Journal du plugin : `<GTA V>\scripts\GTAMax.log`. Journal du serveur :
-`app\logs\gtamax.log` (ou « Télécharger les logs » dans le setup).
+## Tester et installer
 
-## Ajouter une action en jeu
+La page de réglages permet de tester un message, un don, une rafale ou un live simulé sans compte connecté.
+La simulation s'arrête à la connexion d'un vrai live. L'overlay doit être ouvert pour voir les alertes et entendre la voix.
 
-1. `scripts/GTAMax.cs` (ou un fichier à part ajouté à `SOURCES` dans
-   `app/outils/plugin.js`, comme `Survie.cs`) : écrire `void MonAction(Commande c)` (arguments :
-   `c.Arg("cle")`), puis dans le constructeur
-   `registre.Enregistrer("MON_ACTION", MonAction);`.
-2. Côté serveur, l'appeler par le seul pont : `envoyerCommande('MON_ACTION', { cle: 'valeur' })`
-   (`app/gta-bridge.js`). Verbe `[A-Z0-9_]`, clés `[a-z0-9_]`.
-3. `Installer plugin GTA.bat`, puis en jeu **F8** → `Reload()`.
+Après une modification du plugin, lancer **Installer plugin GTA.bat**, puis F8 → Reload() si le jeu tourne.
+L'installateur compile les deux fichiers C# et conserve le fichier INI déjà installé.
 
-Un verbe inconnu du plugin est journalisé et ignoré. Une commande de plus de
-60 s n'est jamais jouée.
+Depuis app, lancer node/node.exe --test "test/**/*.test.js" pour vérifier les événements,
+la voix, le serveur, le pont vers GTA, la simulation et les règles de poursuite.
+Les tests du plugin incluent sa compilation contre ScriptHookVDotNet3.dll lorsque le jeu est configuré.
 
-## Ajouter une commande chat
+Les erreurs sont dans app/logs/gtamax.log et dans scripts/GTAMax.log côté jeu.
+Les documents de docs/superpowers décrivent les anciennes étapes de conception.
 
-1. `app/commandes-chat.js`, registre `COMMANDES` :
+### Bandeau TikTok vertical
 
-   ```js
-   police: {
-     recharge_ms: 60000,   // optionnel : anti-spam global
-     executer(cmd, ctx) {  // cmd = { commande, args, pseudo }
-       ctx.envoyerCommande('SPAWN_POLICE', { donateur: cmd.pseudo, cadeau: '!police' });
-       ctx.repondre('Police envoyée par ' + cmd.pseudo);
-     },
-   },
-   ```
-
-2. `ctx` : `repondre(texte)` (voix), `envoyerCommande(verbe, args)` (jeu),
-   `viewers()` + `sauver()` (roster).
-3. Un test dans `app/test/commandes-chat.test.js`.
-
-Les messages « ! » ne sont jamais lus par la voix. Les autres événements
-(`onLike`, `onFollow`, `onShare`) sont dans `app/evenements.js`, prêts à agir.
-
-## Roster
-
-`app/data.json` : `{ "viewers": { "pseudo": { premiere_vue, derniere_vue, dons_total } } }`
-— horodatages en ms, `dons_total` en pièces TikTok. La clé `viewers` laisse la
-place à l'état d'un futur gameplay à côté.
-
-## Tests
-
-```bash
-cd app && node/node.exe --test "test/**/*.test.js"
-```
-
-Couvre la file TTS, le pont (écriture atomique, péremption), les commandes
-chat, les événements, la persistance, le serveur en bac à sable, et le plugin
-C# (logique pure compilée par `csc`, protocole Node → C#, compilation contre le
-vrai `ScriptHookVDotNet3.dll`). Le comportement en jeu se vérifie avec
-« Tester un don ».
-
-## Retour arrière côté jeu
-
-Tout est additif : supprimer à la racine du jeu `ScriptHookVDotNet.asi`,
-`ScriptHookVDotNet.ini`, `ScriptHookVDotNet2.dll/.pdb`, `ScriptHookVDotNet3.dll/.pdb`,
-`ScriptHookVDotNet.pdb`, et le dossier `scripts\`. Aucun `.rpf`, rien dans `mods\`.
-
-## Dépendances
-
-Versions exactes + `overrides` (voir `app/package.json`). Ne jamais lancer
-`npm audit fix` : il rétrograde `tiktok-live-connector` et casse le protocole TikTok.
+Source navigateur OBS : **1080 × 1920**, placée sur tout le canevas vertical, sans étirer ni recadrer. Le bandeau reste dans les 440 premiers pixels (moins du quart de l’écran) ; le reste est transparent. Les trois premiers scores sont mis en avant, les places 4 et 5 restent visibles dessous. Les gains, niveaux, cadeaux et réponses du garage partagent une seule ligne d’animation ; les longues réponses passent en plusieurs pages.
